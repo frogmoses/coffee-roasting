@@ -1,0 +1,15 @@
+[project]
+name = "roast-analyzer"
+version = "0.1.0"
+description = "Coffee roast analysis tool for Hottop KN-8828B-2K+ with Artisan"
+requires-python = ">=3.10"
+dependencies = [
+    "requests",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
