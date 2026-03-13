@@ -14,17 +14,14 @@ import time
 
 import requests
 
-# Default find-coffee URL (overridden by FIND_COFFEE_URL env var)
-DEFAULT_BASE_URL = "http://localhost:5000"
-
 # Track whether WE started the server (vs it was already running)
 _server_process = None
 _we_started_it = False
 
 
 def _get_base_url():
-    """Get the find-coffee API base URL from env or default."""
-    return os.environ.get("FIND_COFFEE_URL", DEFAULT_BASE_URL)
+    """Get the find-coffee API base URL from FIND_COFFEE_URL env var."""
+    return os.environ.get("FIND_COFFEE_URL")
 
 
 def _is_server_up(url):
@@ -51,14 +48,16 @@ def ensure_server_running(base_url=None):
     """
     global _server_process, _we_started_it
     url = base_url or _get_base_url()
+    if not url:
+        return False
 
     # Already running (either externally or by us) — nothing to do
     if _is_server_up(url):
         return True
 
     # Try to start it via the wrapper script
-    wrapper = os.path.expanduser("~/.local/bin/run_find-coffee")
-    if not os.path.exists(wrapper):
+    wrapper = os.environ.get("FIND_COFFEE_WRAPPER")
+    if not wrapper or not os.path.exists(wrapper):
         return False
 
     try:
@@ -121,6 +120,8 @@ def lookup_bean(bean_name, base_url=None):
         Dict with coffee data from the API, or None if not found.
     """
     url = base_url or _get_base_url()
+    if not url:
+        return None
 
     if not ensure_server_running(url):
         return None

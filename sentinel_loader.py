@@ -10,15 +10,10 @@ import json
 import os
 from pathlib import Path
 
-# Default capture directories — both sentinel systems produce identical JSON
-DEFAULT_CAPTURE_DIRS = [
-    Path(os.path.expanduser("~/CodeProjects/r1-eye/captures")),
-    Path(os.path.expanduser("~/CodeProjects/gopro/captures")),
-]
-
-# Override with colon-separated paths: SENTINEL_CAPTURES_DIRS=/path/a:/path/b
+# Colon-separated capture directories: SENTINEL_CAPTURES_DIRS=/path/a:/path/b
+# Both r1-eye and GoPro sentinel systems produce identical JSON formats
 _env_dirs = os.environ.get("SENTINEL_CAPTURES_DIRS", "")
-CAPTURE_DIRS = [Path(d) for d in _env_dirs.split(":") if d] or DEFAULT_CAPTURE_DIRS
+CAPTURE_DIRS = [Path(d) for d in _env_dirs.split(":") if d]
 
 
 def find_sentinel_logs(captures_dir=None):
