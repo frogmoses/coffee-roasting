@@ -33,7 +33,7 @@ from roast_display import (
     display_roast_list,
     display_next_roast,
 )
-from coffee_lookup import lookup_bean, extract_bean_profile
+from coffee_lookup import lookup_bean, extract_bean_profile, ensure_server_running, stop_server
 from sentinel_loader import match_sentinel_to_roast, extract_visual_data
 
 # Paths
@@ -100,6 +100,10 @@ def cmd_scan(args):
         print(f"No .alog files found in {LOGS_DIR}")
         return
 
+    # Start find-coffee server once for the whole scan batch
+    server_ok, server_status = ensure_server_running()
+    print(f"  find-coffee: {server_status}")
+
     new_count = 0
     for alog_path in alog_files:
         # Parse the file
@@ -115,14 +119,14 @@ def cmd_scan(args):
         # Look up bean profile from find-coffee
         bean_profile = None
         bean_name = data.get("title", "")
-        if bean_name:
+        if bean_name and server_ok:
             print(f"  Looking up bean: {bean_name}...")
-            coffee_data = lookup_bean(bean_name)
+            coffee_data, lookup_status = lookup_bean(bean_name)
             if coffee_data:
                 bean_profile = extract_bean_profile(coffee_data)
                 print(f"  Found bean profile for: {bean_profile['name']}")
             else:
-                print(f"  Bean not found in find-coffee (analysis continues without it)")
+                print(f"  Bean lookup: {lookup_status}")
 
         # Look for matching r1-eye sentinel visual data
         visual_data = None
@@ -141,6 +145,12 @@ def cmd_scan(args):
         history[roast_id] = analysis
         new_count += 1
         print(f"  Analyzed: {roast_id}")
+        # Print data quality warnings inline during scan
+        for warning in analysis.get("warnings", []):
+            print(f"    !! {warning}")
+
+    # Clean up find-coffee server if we started it
+    stop_server()
 
     save_history(history)
     print(f"\nScanned {len(alog_files)} files, {new_count} new analyses saved.")
@@ -299,15 +309,21 @@ def cmd_list(args):
 def cmd_bean(args):
     """Look up a bean in find-coffee."""
     print(f"Looking up: {args.name}...")
-    # lookup_bean handles server start/stop automatically
-    coffee_data = lookup_bean(args.name)
+    server_ok, server_status = ensure_server_running()
+    if not server_ok:
+        print(f"  find-coffee: {server_status}")
+        return
+
+    print(f"  find-coffee: {server_status}")
+    coffee_data, lookup_status = lookup_bean(args.name)
 
     if not coffee_data:
-        print(f"Bean '{args.name}' not found in find-coffee.")
+        print(f"  Bean lookup: {lookup_status}")
         return
 
     profile = extract_bean_profile(coffee_data)
     print(display_bean_profile(profile))
+    stop_server()
 
 
 def main():

@@ -65,6 +65,19 @@ def display_roast_summary(analysis):
     w = 62
 
     lines.append(_box_header(f"Roast: {analysis.get('title', '?')}", w))
+
+    # Show data quality warnings at the top if any
+    data_warnings = analysis.get("warnings", [])
+    if data_warnings:
+        for warning in data_warnings:
+            # Wrap long warnings
+            text = f"  !! {warning}"
+            while len(text) > w - 4:
+                lines.append(_box_row(text[:w-4], "", w))
+                text = "     " + text[w-4:]
+            lines.append(_box_row(text, "", w))
+        lines.append(_box_separator(w))
+
     lines.append(_box_row(f"Date: {analysis.get('roast_date', '?')}", f"Batch #{analysis.get('batch_nr', '?')}", w))
     lines.append(_box_row(f"Weight: {m.get('weight_in', 0)}g", f"Total: {format_time(m.get('total_time', 0))}", w))
     lines.append(_box_separator(w))

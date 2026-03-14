@@ -3,9 +3,9 @@
 Queries the find-coffee Flask app for professional cupping notes,
 flavor dimension scores, and cupping chart scores for beans.
 
-Lifecycle: if find-coffee isn't already running, we start it,
-do the lookup, then kill the process. If it was already running
-(user started it), we leave it alone.
+Lifecycle: callers should use ensure_server_running() before a batch
+of lookups, then stop_server() when done. If the server was already
+running externally, stop_server() leaves it alone.
 """
 
 import os
@@ -40,25 +40,32 @@ def ensure_server_running(base_url=None):
     If we have to start it ourselves, we track that so stop_server()
     only kills a process we own.
 
+    Call this once before a batch of lookups, not per-lookup.
+
     Args:
         base_url: Override the default URL.
 
     Returns:
-        True if the server is responding, False otherwise.
+        (True, status_message) if the server is responding.
+        (False, status_message) with reason on failure.
     """
     global _server_process, _we_started_it
     url = base_url or _get_base_url()
     if not url:
-        return False
+        return False, "FIND_COFFEE_URL not set"
 
     # Already running (either externally or by us) — nothing to do
     if _is_server_up(url):
-        return True
+        return True, "find-coffee server already running"
 
     # Try to start it via the wrapper script
     wrapper = os.environ.get("FIND_COFFEE_WRAPPER")
-    if not wrapper or not os.path.exists(wrapper):
-        return False
+    if not wrapper:
+        return False, "FIND_COFFEE_WRAPPER not set"
+    # Expand ~ so paths like ~/.local/bin/run_find-coffee resolve correctly
+    wrapper = os.path.expanduser(wrapper)
+    if not os.path.exists(wrapper):
+        return False, f"FIND_COFFEE_WRAPPER not found: {wrapper}"
 
     try:
         _server_process = subprocess.Popen(
@@ -72,21 +79,21 @@ def ensure_server_running(base_url=None):
         for _ in range(20):
             time.sleep(0.5)
             if _is_server_up(url):
-                return True
+                return True, "find-coffee server started"
 
         # Server didn't start in time — clean up
         stop_server()
-        return False
+        return False, f"find-coffee server failed to start within 10s (wrapper: {wrapper})"
 
-    except (OSError, subprocess.SubprocessError):
-        return False
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"find-coffee server failed to launch: {e}"
 
 
 def stop_server():
     """Stop the find-coffee server ONLY if we started it ourselves.
 
     If the user had find-coffee running before we checked, we don't
-    touch it. This is called automatically after lookups are done.
+    touch it. Call this once after a batch of lookups is complete.
     """
     global _server_process, _we_started_it
     if _server_process is not None and _we_started_it:
@@ -106,25 +113,24 @@ def stop_server():
 def lookup_bean(bean_name, base_url=None):
     """Search find-coffee for a matching bean.
 
-    Ensures the server is running first, does the query,
-    then stops the server if we started it.
-
+    The server must already be running (call ensure_server_running() first).
     The API does case-insensitive LIKE matching.
-    Returns the best match (first result) or None.
+    Returns (result_dict, status) or (None, status).
 
     Args:
         bean_name: Name to search for (e.g., "Ethiopia Gerba").
         base_url: Override the default URL.
 
     Returns:
-        Dict with coffee data from the API, or None if not found.
+        Tuple of (coffee_data_dict or None, status_string).
     """
     url = base_url or _get_base_url()
     if not url:
-        return None
+        return None, "FIND_COFFEE_URL not set"
 
-    if not ensure_server_running(url):
-        return None
+    # Check the server is actually responding
+    if not _is_server_up(url):
+        return None, "find-coffee server not responding"
 
     try:
         resp = requests.get(
@@ -133,7 +139,7 @@ def lookup_bean(bean_name, base_url=None):
             timeout=5,
         )
         if resp.status_code != 200:
-            return None
+            return None, f"find-coffee API returned HTTP {resp.status_code}"
 
         results = resp.json()
         if not results:
@@ -149,13 +155,12 @@ def lookup_bean(bean_name, base_url=None):
                 if resp.status_code == 200:
                     results = resp.json()
 
-        return results[0] if results else None
+        if results:
+            return results[0], "found"
+        return None, f"no match for '{bean_name}' in find-coffee database"
 
-    except (requests.RequestException, ValueError):
-        return None
-    finally:
-        # Always clean up after the lookup
-        stop_server()
+    except (requests.RequestException, ValueError) as e:
+        return None, f"find-coffee query failed: {e}"
 
 
 def extract_bean_profile(coffee_data):

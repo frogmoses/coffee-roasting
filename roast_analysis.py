@@ -4,7 +4,7 @@ Generates prioritized, actionable recommendations based on
 roast metrics and optional bean profile data from find-coffee.
 """
 
-from roast_metrics import extract_metrics, add_visual_metrics, compare_to_targets, _fmt_time
+from roast_metrics import extract_metrics, add_visual_metrics, compare_to_targets, validate_metrics, _fmt_time
 
 
 def analyze_roast(data, bean_profile=None, visual_data=None):
@@ -24,6 +24,9 @@ def analyze_roast(data, bean_profile=None, visual_data=None):
     if visual_data:
         metrics = add_visual_metrics(metrics, visual_data)
 
+    # Validate metrics for suspicious or missing data
+    data_warnings = validate_metrics(metrics)
+
     comparisons = compare_to_targets(metrics)
     recommendations = generate_recommendations(comparisons, metrics, bean_profile)
 
@@ -38,6 +41,7 @@ def analyze_roast(data, bean_profile=None, visual_data=None):
         "comparisons": comparisons,
         "recommendations": recommendations,
         "bean_profile": bean_profile,
+        "warnings": data_warnings,
     }
 
 

@@ -206,6 +206,64 @@ def extract_metrics(data):
     return metrics
 
 
+def validate_metrics(metrics):
+    """Check metrics for suspicious or missing data.
+
+    Returns a list of warning strings. Empty list means data looks OK.
+
+    Args:
+        metrics: Dict from extract_metrics().
+
+    Returns:
+        List of warning message strings.
+    """
+    warnings = []
+
+    # Missing charge temperature — CHARGE event not recorded properly
+    if metrics.get("charge_bt", 0) == 0:
+        warnings.append("CHARGE BT missing — CHARGE event may not have been recorded")
+    if metrics.get("charge_et", 0) == 0:
+        warnings.append("CHARGE ET missing — CHARGE event may not have been recorded")
+
+    # Drying phase way out of range (normal is ~40-50%)
+    dry_pct = metrics.get("dry_phase_pct", 0)
+    if dry_pct > 55:
+        warnings.append(f"Drying phase {dry_pct}% is abnormally high — possible CHARGE timing issue")
+    elif 0 < dry_pct < 30:
+        warnings.append(f"Drying phase {dry_pct}% is abnormally low")
+
+    # Development phase sanity (normal is ~10-20%)
+    dev_pct = metrics.get("dev_phase_pct", 0)
+    if dev_pct > 25:
+        warnings.append(f"Development phase {dev_pct}% is abnormally high")
+    elif metrics.get("total_time", 0) > 0 and dev_pct == 0:
+        warnings.append("Development phase is 0% — FC or DROP event may be missing")
+
+    # Total time sanity (normal is ~9-15 min)
+    total = metrics.get("total_time", 0)
+    if total > 0 and total < 300:
+        warnings.append(f"Total time {total:.0f}s ({total/60:.1f}min) is unusually short")
+    elif total > 1080:
+        warnings.append(f"Total time {total:.0f}s ({total/60:.1f}min) is unusually long")
+
+    # FC temp sanity (normal is ~350-400F)
+    fc_bt = metrics.get("fc_bt", 0)
+    if fc_bt > 0 and (fc_bt < 330 or fc_bt > 420):
+        warnings.append(f"FC temp {fc_bt}F is outside expected range (330-420F)")
+
+    # Drop temp should be >= FC temp
+    drop_bt = metrics.get("drop_bt", 0)
+    if drop_bt > 0 and fc_bt > 0 and drop_bt < fc_bt - 5:
+        warnings.append(f"Drop temp {drop_bt}F is below FC temp {fc_bt}F — possible event recording error")
+
+    # Turning point should be well below FC
+    tp_bt = metrics.get("tp_bt", 0)
+    if tp_bt > 0 and tp_bt > 200:
+        warnings.append(f"Turning point {tp_bt}F is unusually high")
+
+    return warnings
+
+
 def add_visual_metrics(metrics, visual_data):
     """Merge sentinel visual data into the metrics dict.
 
