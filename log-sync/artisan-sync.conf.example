@@ -1,0 +1,9 @@
+# Artisan Roast Log Sync — Configuration
+# Fill in REMOTE_USER and REMOTE_HOST, then run:
+#   ssh-copy-id ${REMOTE_USER}@${REMOTE_HOST}
+
+REMOTE_USER="your-username"
+REMOTE_HOST="your-hostname"
+REMOTE_PATH="/path/to/coffee-roasting/roast-logs"
+LOCAL_PATH="/path/to/local/coffee-roasts"
+FILE_PATTERN="*.alog *.png"

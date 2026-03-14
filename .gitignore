@@ -6,3 +6,4 @@ __pycache__/
 roast_history.json
 roast-logs/
 reference/
+log-sync/artisan-sync.conf

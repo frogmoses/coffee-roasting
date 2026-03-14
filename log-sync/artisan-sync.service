@@ -1,0 +1,12 @@
+[Unit]
+Description=Artisan roast log sync watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/coffee-man/bin/artisan-sync-watch.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
