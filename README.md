@@ -78,7 +78,9 @@ If you don't specify an ID, the command uses the latest roast.
 
 ## Visual Data
 
-If the [r1-eye](https://github.com/frogmoses/r1-eye) or [GoPro](https://github.com/frogmoses/gopro) sentinel was running during the roast, visual development data (color scoring, uniformity) is automatically matched by date and included in the analysis. No extra steps — just run `full --force` after sentinel captures have synced.
+If the [r1-eye](https://github.com/frogmoses/r1-eye) or [GoPro](https://github.com/frogmoses/gopro) sentinel was running during the roast, visual development data (color scoring, uniformity) is automatically included in the analysis. No extra steps — just run `full --force` after sentinel captures have synced.
+
+Sentinel sessions are linked to `.alog` files by UUID when Artisan's OFF button is configured to send `send({"event": "OFF"})` via WebSocket. This triggers the sentinel to read the `.alog` that Artisan just saved and embed the `roastUUID` for deterministic matching. Without OFF configured, matching falls back to date/time.
 
 ## Reference
 

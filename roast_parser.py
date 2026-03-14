@@ -96,6 +96,9 @@ def extract_roast_data(raw):
         "flavors": raw.get("flavors", []),
         "flavor_labels": raw.get("flavorlabels", []),
 
+        # Unique identifier for linking with sentinel data
+        "roast_uuid": raw.get("roastUUID", ""),
+
         # Roast characteristics
         "heavy_fc": raw.get("heavyFC", False),
         "low_fc": raw.get("lowFC", False),

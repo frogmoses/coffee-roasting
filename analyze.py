@@ -132,8 +132,9 @@ def cmd_scan(args):
         visual_data = None
         roast_date = data.get("roast_date", "")
         roast_time = data.get("roast_time", "")
-        if roast_date:
-            sentinel = match_sentinel_to_roast(roast_date, roast_time)
+        roast_uuid = data.get("roast_uuid", "")
+        if roast_date or roast_uuid:
+            sentinel = match_sentinel_to_roast(roast_date, roast_time, roast_uuid)
             if sentinel:
                 visual_data = extract_visual_data(sentinel)
                 if visual_data:

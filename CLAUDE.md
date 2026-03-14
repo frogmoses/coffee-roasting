@@ -32,7 +32,7 @@ coffee-roasting/
 ├── roast_analysis.py       # Recommendation engine (4 categories)
 ├── roast_display.py        # Terminal formatting with Unicode box-drawing
 ├── coffee_lookup.py        # find-coffee API client with auto server lifecycle
-├── sentinel_loader.py      # Sentinel JSON loading, date-matching, visual extraction
+├── sentinel_loader.py      # Sentinel JSON loading, UUID/date matching, visual extraction
 ├── pyproject.toml          # Package config (requires-python >=3.10, dep: requests)
 ├── log-sync/               # Artisan log sync scripts for roaster machine
 │   ├── artisan-sync-watch.sh   # inotifywait watcher (systemd service)
@@ -46,18 +46,18 @@ coffee-roasting/
 
 ## CLI Command -> Code Mapping
 
-Dispatch table in `analyze.py:369-378`. Each command maps to a `cmd_*` function:
+Dispatch table in `analyze.py:389-398`. Each command maps to a `cmd_*` function:
 
 | Command | Function | Key flow |
 |---------|----------|----------|
-| `full` | `cmd_full()` `:243` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_target_comparison()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
-| `scan` | `cmd_scan()` `:94` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `analyze_roast()` -> `save_history()` |
-| `show` | `cmd_show()` `:149` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
-| `compare` | `cmd_compare()` `:167` | `compare_roasts()` -> `display_roast_comparison()` |
-| `recommend` | `cmd_recommend()` `:195` | `display_target_comparison()` -> `display_recommendations()` -> `generate_next_roast_summary()` -> `display_next_roast()` |
-| `cupping` | `cmd_cupping()` `:221` | Read/write `cupping_notes` in history |
-| `list` | `cmd_list()` `:292` | `get_sorted_analyses()` -> `display_roast_list()` |
-| `bean` | `cmd_bean()` `:299` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
+| `full` | `cmd_full()` `:257` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_target_comparison()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
+| `scan` | `cmd_scan()` `:94` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `enrich_trajectory_with_temps()` -> `analyze_roast()` -> `save_history()` |
+| `show` | `cmd_show()` `:163` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
+| `compare` | `cmd_compare()` `:181` | `compare_roasts()` -> `display_roast_comparison()` |
+| `recommend` | `cmd_recommend()` `:209` | `display_target_comparison()` -> `display_recommendations()` -> `generate_next_roast_summary()` -> `display_next_roast()` |
+| `cupping` | `cmd_cupping()` `:235` | Read/write `cupping_notes` in history |
+| `list` | `cmd_list()` `:306` | `get_sorted_analyses()` -> `display_roast_list()` |
+| `bean` | `cmd_bean()` `:313` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
 
 CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n` (cupping).
 
@@ -80,7 +80,8 @@ Roast ID resolution (`resolve_roast_id()` `:64`): exact match -> batch number ->
 
 Parallel enrichment during scan:
 - `coffee_lookup.lookup_bean()` — queries find-coffee API for bean profile
-- `sentinel_loader.match_sentinel_to_roast()` — finds visual data by date match
+- `sentinel_loader.match_sentinel_to_roast()` — finds visual data by UUID (deterministic) or date/time (fallback)
+- `sentinel_loader.enrich_trajectory_with_temps()` — adds BT/ET from .alog to each visual trajectory point
 
 ## Target Constants
 
@@ -102,12 +103,12 @@ Comparison status values: `"OK"`, `"!! HIGH"`, `"!! LOW"`.
 
 ## Recommendation Engine (`roast_analysis.py`)
 
-`generate_recommendations()` `:44` produces recs from 4 categories:
+`generate_recommendations()` `:48` produces recs from 4 categories:
 
-1. **Roast mechanics** (`_mechanic_recommendations` `:81`) — phase timing, heat control, RoR, temperatures
-2. **Bean-specific** (`_bean_recommendations` `:305`) — flavor profile advice based on find-coffee data
-3. **Flavor gap** (`_flavor_gap_recommendations` `:382`) — professional cupping notes vs actual results
-4. **Visual** (`_visual_recommendations` `:418`) — sentinel development scores
+1. **Roast mechanics** (`_mechanic_recommendations` `:85`) — phase timing, heat control, RoR, temperatures
+2. **Bean-specific** (`_bean_recommendations` `:309`) — flavor profile advice based on find-coffee data
+3. **Flavor gap** (`_flavor_gap_recommendations` `:386`) — professional cupping notes vs actual results
+4. **Visual** (`_visual_recommendations` `:422`) — sentinel development scores with BT context
 
 ### Recommendation dict fields
 
@@ -120,13 +121,13 @@ Each rec is a dict with:
 ### Beginner-friendly features
 
 - **Actionable temperature recs**: `fc_bt` and `drop_bt` recs explain what the temperature means and what to do
-- **RoR linking**: when both RoR oscillation and low FC RoR recs are present, a post-pass (`roast_analysis.py:288-300`) appends a linking sentence
+- **RoR linking**: when both RoR oscillation and low FC RoR recs are present, a post-pass (`roast_analysis.py:292-304`) appends a linking sentence
 - **Cupping notes truncation**: Flavor Goal recs truncate professional notes to 2 sentences; full text via `--verbose`
-- **Priority legend**: displayed at top of recommendations box (`roast_display.py:248`)
+- **Priority legend**: displayed at top of recommendations box (`roast_display.py:308`)
 
 ### Next Roast Synthesis
 
-`generate_next_roast_summary()` `:514` maps off-target comparisons to concrete actions:
+`generate_next_roast_summary()` `:528` maps off-target comparisons to concrete actions:
 
 | Pattern | Action |
 |---------|--------|
@@ -137,6 +138,8 @@ Each rec is a dict with:
 | High FC RoR | "Cut heat earlier" |
 | Low FC RoR | "More momentum into FC" |
 | High drop temp | "Drop sooner" |
+| Poor visual uniformity | "Reduce batch size or preheat longer" |
+| Visual development stalled | "Maintain heat through mid-roast" |
 
 Deduplicates via `seen` set keyed on action theme. Caps at 4 items.
 
@@ -145,14 +148,15 @@ Deduplicates via `seen` set keyed on action theme. Caps at 4 items.
 Box width: 72 for recommendations/comparisons/next-roast, 62 for summaries/trends.
 
 Key functions:
-- `display_roast_summary()` `:54` — temps, phases, RoR, visual scores, cupping notes
-- `display_bean_profile()` `:137` — cupping notes, flavor bars, cupping chart scores
-- `display_target_comparison()` `:192` — metric vs target table
-- `display_recommendations()` `:229` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
-- `display_next_roast()` `:289` — numbered action items
-- `display_roast_comparison()` `:333` — side-by-side delta table with improved/regressed
-- `display_trend()` `:388` — all roasts in a compact metric table
-- `display_roast_list()` `:427` — batch #, date, title, time, drop temp
+- `_visual_summary()` `:54` — one-line trajectory interpretation (steady/stalled/rapid jump)
+- `display_roast_summary()` `:102` — temps, phases, RoR, phase-grouped visual scores, cupping notes
+- `display_bean_profile()` `:216` — cupping notes, flavor bars, cupping chart scores
+- `display_target_comparison()` `:271` — metric vs target table
+- `display_recommendations()` `:308` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
+- `display_next_roast()` `:368` — numbered action items
+- `display_roast_comparison()` `:412` — side-by-side delta table with improved/regressed
+- `display_trend()` `:467` — all roasts in a compact metric table
+- `display_roast_list()` `:506` — batch #, date, title, time, drop temp
 
 ## .alog Technical Details
 
@@ -184,7 +188,7 @@ Extracted in `roast_metrics.extract_metrics()` `:143`:
 
 ### Extracted roast data fields
 
-`extract_roast_data()` (`roast_parser.py:35`) also pulls: `title`, `roastbatchnr`, `weight`, `machinesetup`/`roastertype`, `mode` (F/C), `roastingnotes`, `cuppingnotes`, `flavors`/`flavorlabels`, `heavyFC`, `lowFC`, `oily`, `tipping`, `scorching`.
+`extract_roast_data()` (`roast_parser.py:35`) also pulls: `title`, `roastbatchnr`, `roastUUID`, `weight`, `machinesetup`/`roastertype`, `mode` (F/C), `roastingnotes`, `cuppingnotes`, `flavors`/`flavorlabels`, `heavyFC`, `lowFC`, `oily`, `tipping`, `scorching`.
 
 ## find-coffee Integration
 
@@ -208,14 +212,19 @@ ROASTER MACHINE                           DEV MACHINE
 ─────────────────                         ───────────────
 Artisan (.alog)                           coffee-roasting/roast-logs/
   │                                           ↑
-  └─ inotifywait ──→ artisan-sync.sh ──rsync──┘
-     (log-sync/)
+  ├─ inotifywait ──→ artisan-sync.sh ──rsync──┘
+  │  (log-sync/)
+  │
+  └─ OFF button ──ws──→ Sentinel reads .alog
+                         extracts roastUUID + batch_nr
 
 Sentinel (JSON)                           gopro/captures/ or r1-eye/captures/
   │                                           ↑
   └─ _push_log() ──────────────────rsync──────┘
      (in sentinel.py)                     sentinel_loader.py reads from here
                                           via SENTINEL_CAPTURES_DIRS env var
+                                          matches by UUID (deterministic)
+                                          or date/time (fallback)
 ```
 
 ### Component 1: Artisan log sync (`log-sync/`)
@@ -245,10 +254,14 @@ Two interchangeable camera systems produce identical sentinel JSON files during 
 | [r1-eye](https://github.com/frogmoses/r1-eye) | Rabbit R1 (jailbroken) | ADB camera shutter | `~/CodeProjects/r1-eye` |
 
 Both sentinels:
-1. Connect to Artisan via WebSocket (port 8765) to receive roast events (CHARGE, DRY, FCs, DROP, etc.)
-2. Capture images at phase-adaptive intervals (drying: 30s, maillard: 20s, development: 10s)
-3. Send each image to Claude Vision API for color/development scoring
-4. Save session data to `captures/sentinel_YYYY-MM-DD_HHMM.json`
+1. Run a WebSocket server (port 8765) that Artisan connects to as a client
+2. Receive roast events (CHARGE, DRY, FCs, DROP, OFF, etc.) from Artisan button actions
+3. Capture images at phase-adaptive intervals (drying: 30s, maillard: 20s, development: 10s)
+4. Send each image to Claude Vision API for color/development scoring
+5. On OFF event: read the newest `.alog` from `ARTISAN_SAVE_DIR` (default `~/coffee-roasts`) to extract `roastUUID` and `roastbatchnr` for deterministic linking
+6. Save session data to `captures/sentinel_YYYY-MM-DD_HHMM.json`
+
+**Artisan OFF button config**: Must have a WebSocket Command action: `send({"event": "OFF"})`. This triggers `.alog` linking — without it, sentinel falls back to date/time matching.
 
 ### Component 3: Sentinel log push to dev machine
 
@@ -257,7 +270,7 @@ Each sentinel has a `_push_log()` method that rsyncs the JSON file to the dev ma
 | Project | Env var | Example value |
 |---------|---------|---------------|
 | gopro | `SENTINEL_RSYNC_DEST` | `user@devmachine:~/CodeProjects/gopro/captures/` |
-| r1-eye | `R1_PUSH_DEST` | `user@devmachine:~/CodeProjects/r1-eye/captures/` |
+| r1-eye | `R1_PUSH_ADDRESS` | `user@devmachine:~/CodeProjects/r1-eye/captures/` |
 
 r1-eye also has a manual fallback: `sync_captures.sh` pulls sentinel JSON/PNG files from the roaster via rsync (requires SSH alias "roaster" in `~/.ssh/config`).
 
@@ -277,7 +290,9 @@ Both projects produce identical JSON:
 {
   "session_id": "2026-02-28_1518",
   "bean_name": "Ethiopia Yirgacheffe",
-  "artisan_events": {"charge": 0.0, "dry": 270.5, "fcs": 450.2, "drop": 570.8},
+  "roast_uuid": "d97e026e9c814453b8290999e3138e69",
+  "batch_nr": 8,
+  "artisan_events": {"charge": 0.0, "dry": 270.5, "fcs": 450.2, "drop": 570.8, "off": 580.0},
   "observations": [
     {
       "elapsed_seconds": 1.5,
@@ -292,32 +307,43 @@ Both projects produce identical JSON:
 }
 ```
 
+`roast_uuid` and `batch_nr` are populated when the OFF event is received (Artisan saves the `.alog` on OFF, sentinel reads it). Empty/zero if OFF was not configured or not pressed.
+
 Development score scale (1-10): green → pale yellow → tan → cinnamon → city → full city → dark → Vienna → French → Italian.
 
-### Sentinel matching logic (`match_sentinel_to_roast` `:49`)
+### Sentinel matching logic (`match_sentinel_to_roast` `:44`)
 
-1. Extract date from sentinel `session_id` (first 10 chars)
-2. Compare against `.alog` `roastisodate`
-3. Multiple matches on same date: closest time wins (HHMM comparison)
-4. Fallback: latest session on that date
-5. If both gopro and r1-eye sessions exist for the same roast, whichever is closest in time wins — no modality distinction or merging
+1. **UUID match (deterministic)**: if the `.alog` has a `roastUUID`, scan all sentinel JSONs for a matching `roast_uuid` field — this is an exact 1:1 link
+2. **Date match (fallback)**: extract date from sentinel `session_id` (first 10 chars), compare against `.alog` `roastisodate`
+3. **Time tiebreak**: multiple matches on same date → closest time wins (HHMM comparison)
+4. **Last resort**: latest session on that date
+5. If both gopro and r1-eye sessions exist for the same roast, whichever matches first (UUID or closest time) wins — no modality distinction or merging
 
 ### Visual metrics added to analysis
 
 | Metric | Source | Description |
 |--------|--------|-------------|
-| `visual_development_scores` | `extract_visual_data()` | List of `{elapsed, score, phase}` trajectory points |
+| `visual_source` | `_infer_source_label()` | "GoPro", "r1-eye", or "Sentinel" (from file path) |
+| `visual_development_scores` | `extract_visual_data()` | List of `{elapsed, score, phase, bt, et}` trajectory points |
 | `visual_final_score` | Last non-zero `development_score` | 1-10 scale |
 | `visual_uniformity` | `_classify_uniformity()` | excellent, good, moderate, poor, unknown |
 | `visual_score_count` | Count of scored captures | Number of trajectory points |
 | `visual_final_color` | Last observation's `color_assessment` | Text description |
 
-### Visual recommendation triggers (`_visual_recommendations` `:418`)
+Trajectory points are enriched with BT/ET from the `.alog` by `enrich_trajectory_with_temps()` `:268`. These temperatures are included in visual recommendation text for actionable context.
 
-- Score plateau (3+ consecutive same score in maillard/development) -> increase heat
-- Rapid score jump (delta >= 3) -> too aggressive heat
+### Visual recommendation triggers (`_visual_recommendations` `:422`)
+
+- Score plateau (3+ consecutive same score in maillard/development) -> increase heat (includes BT if available)
+- Rapid score jump (delta >= 3) -> too aggressive heat (includes BT if available)
 - Poor uniformity -> drum/charge issue
 - High visual score (>=8) + short development (<14%) -> surface scorching
+
+### Visual display features
+
+- Timeline grouped by phase (Drying/Maillard/Development) instead of flat list
+- Source label inferred from path ("GoPro" or "r1-eye") instead of hardcoded
+- One-line interpretive summary via `_visual_summary()`: "Steady progression 2→8", "Stalled at 5 during maillard", "Rapid jump to 8 at 5:30"
 
 ## History File
 

@@ -41,17 +41,18 @@ def find_sentinel_logs(captures_dir=None):
     return logs
 
 
-def match_sentinel_to_roast(roast_date, roast_time="", captures_dir=None):
-    """Find the sentinel session that matches a roast by date.
+def match_sentinel_to_roast(roast_date, roast_time="", roast_uuid="", captures_dir=None):
+    """Find the sentinel session that matches a roast.
 
-    Matching strategy:
-    1. Extract the date portion from sentinel session_id (YYYY-MM-DD)
-    2. Compare against the roast's ISO date
-    3. If multiple matches on same date, use closest time match
+    Matching strategy (in priority order):
+    1. Deterministic: match on roast_uuid if both sentinel and .alog have it
+    2. Date match: extract date from sentinel session_id (YYYY-MM-DD)
+    3. Time tiebreak: if multiple matches on same date, use closest time
 
     Args:
         roast_date: ISO date string from .alog (e.g., "2026-02-17").
         roast_time: Time string from .alog (e.g., "18:51") for tiebreaking.
+        roast_uuid: UUID from .alog roastUUID field for deterministic matching.
         captures_dir: Override captures directory.
 
     Returns:
@@ -61,7 +62,14 @@ def match_sentinel_to_roast(roast_date, roast_time="", captures_dir=None):
     if not logs:
         return None
 
-    # Find all sessions matching the roast date
+    # Priority 1: deterministic UUID match
+    if roast_uuid:
+        for session_id, path in logs:
+            sentinel = _load_sentinel(path)
+            if sentinel and sentinel.get("roast_uuid") == roast_uuid:
+                return sentinel
+
+    # Priority 2: date-based matching with time tiebreak
     matches = []
     for session_id, path in logs:
         # session_id format: YYYY-MM-DD_HHMM
