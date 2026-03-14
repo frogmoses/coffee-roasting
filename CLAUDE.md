@@ -197,18 +197,110 @@ Extracted in `roast_metrics.extract_metrics()` `:143`:
   - `FIND_COFFEE_WRAPPER` — path to wrapper script that starts the server
 - If either env var is missing, bean lookup is silently skipped
 
-## Sentinel Visual Integration
+## Full Roasting Pipeline
 
-`sentinel_loader.py` scans directories listed in `SENTINEL_CAPTURES_DIRS` env var (colon-separated paths, no default). If unset, visual data is silently skipped.
+This project is the analysis endpoint for a multi-machine pipeline. Data flows from the roaster machine to this dev machine via two parallel paths: Artisan roast logs and sentinel visual captures.
 
-Both [r1-eye](https://github.com/frogmoses/r1-eye) and [GoPro](https://github.com/frogmoses/gopro) sentinels produce identical session JSON formats (`sentinel_YYYY-MM-DD_HHMM.json`).
+### Pipeline overview
 
-### Matching logic (`match_sentinel_to_roast` `:49`)
+```
+ROASTER MACHINE                           DEV MACHINE
+─────────────────                         ───────────────
+Artisan (.alog)                           coffee-roasting/roast-logs/
+  │                                           ↑
+  └─ inotifywait ──→ artisan-sync.sh ──rsync──┘
+     (log-sync/)
+
+Sentinel (JSON)                           gopro/captures/ or r1-eye/captures/
+  │                                           ↑
+  └─ _push_log() ──────────────────rsync──────┘
+     (in sentinel.py)                     sentinel_loader.py reads from here
+                                          via SENTINEL_CAPTURES_DIRS env var
+```
+
+### Component 1: Artisan log sync (`log-sync/`)
+
+Runs on the **roaster machine** as a systemd user service. Watches for new/modified `.alog` and `.png` files and rsyncs them to the dev machine.
+
+| File | Role |
+|------|------|
+| `artisan-sync-watch.sh` | inotifywait loop on `LOCAL_PATH`, triggers sync on `.alog`/`.png` changes (2s debounce) |
+| `artisan-sync.sh` | rsync `.alog` + `.png` files to `REMOTE_USER@REMOTE_HOST:REMOTE_PATH` |
+| `artisan-sync.conf.example` | Config template — copy to `artisan-sync.conf` and fill in SSH details |
+| `artisan-sync.service` | systemd user unit to run the watcher |
+
+Config vars (in `artisan-sync.conf`):
+- `REMOTE_USER`, `REMOTE_HOST` — SSH target (dev machine)
+- `REMOTE_PATH` — destination directory (e.g., `/path/to/coffee-roasting/roast-logs`)
+- `LOCAL_PATH` — Artisan's save directory on the roaster
+- `FILE_PATTERN` — `*.alog *.png`
+
+### Component 2: Sentinel visual capture (external projects)
+
+Two interchangeable camera systems produce identical sentinel JSON files during roasting. Both run on the **roaster machine** alongside Artisan.
+
+| Project | Device | Capture method | Repo |
+|---------|--------|---------------|------|
+| [gopro](https://github.com/frogmoses/gopro) | GoPro Hero 13 | USB-C SDK HTTP commands | `~/CodeProjects/gopro` |
+| [r1-eye](https://github.com/frogmoses/r1-eye) | Rabbit R1 (jailbroken) | ADB camera shutter | `~/CodeProjects/r1-eye` |
+
+Both sentinels:
+1. Connect to Artisan via WebSocket (port 8765) to receive roast events (CHARGE, DRY, FCs, DROP, etc.)
+2. Capture images at phase-adaptive intervals (drying: 30s, maillard: 20s, development: 10s)
+3. Send each image to Claude Vision API for color/development scoring
+4. Save session data to `captures/sentinel_YYYY-MM-DD_HHMM.json`
+
+### Component 3: Sentinel log push to dev machine
+
+Each sentinel has a `_push_log()` method that rsyncs the JSON file to the dev machine after DROP (or on Ctrl+C). This is best-effort — a failed push is non-fatal.
+
+| Project | Env var | Example value |
+|---------|---------|---------------|
+| gopro | `SENTINEL_RSYNC_DEST` | `user@devmachine:~/CodeProjects/gopro/captures/` |
+| r1-eye | `R1_PUSH_DEST` | `user@devmachine:~/CodeProjects/r1-eye/captures/` |
+
+r1-eye also has a manual fallback: `sync_captures.sh` pulls sentinel JSON/PNG files from the roaster via rsync (requires SSH alias "roaster" in `~/.ssh/config`).
+
+### Component 4: Sentinel loader (`sentinel_loader.py`)
+
+Reads sentinel JSON files from the dev machine and matches them to roast logs for analysis.
+
+**Env var:** `SENTINEL_CAPTURES_DIRS` — colon-separated paths to sentinel capture directories on this machine. If unset, visual data is silently skipped.
+
+Example: `SENTINEL_CAPTURES_DIRS=/home/brian/CodeProjects/gopro/captures:/home/brian/CodeProjects/r1-eye/captures`
+
+### Sentinel JSON schema
+
+Both projects produce identical JSON:
+
+```json
+{
+  "session_id": "2026-02-28_1518",
+  "bean_name": "Ethiopia Yirgacheffe",
+  "artisan_events": {"charge": 0.0, "dry": 270.5, "fcs": 450.2, "drop": 570.8},
+  "observations": [
+    {
+      "elapsed_seconds": 1.5,
+      "phase": "drying",
+      "type": "vision",
+      "image_file": "captures/sentinel_20260228_151800.jpg",
+      "color_assessment": "Pale green, raw unroasted beans",
+      "development_score": 1,
+      "uniformity": "Consistent color across all visible beans"
+    }
+  ]
+}
+```
+
+Development score scale (1-10): green → pale yellow → tan → cinnamon → city → full city → dark → Vienna → French → Italian.
+
+### Sentinel matching logic (`match_sentinel_to_roast` `:49`)
 
 1. Extract date from sentinel `session_id` (first 10 chars)
 2. Compare against `.alog` `roastisodate`
 3. Multiple matches on same date: closest time wins (HHMM comparison)
 4. Fallback: latest session on that date
+5. If both gopro and r1-eye sessions exist for the same roast, whichever is closest in time wins — no modality distinction or merging
 
 ### Visual metrics added to analysis
 
