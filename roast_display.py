@@ -51,6 +51,54 @@ def _box_separator(width=60):
     return f"{T_RIGHT}{H_LINE * (width - 2)}{T_LEFT}"
 
 
+def _visual_summary(trajectory):
+    """Generate a one-line interpretive summary of the visual trajectory.
+
+    Describes the overall shape: steady progression, stall, or rapid jump.
+
+    Args:
+        trajectory: List of trajectory point dicts with score/elapsed/phase.
+
+    Returns:
+        Summary string, or empty string if insufficient data.
+    """
+    if len(trajectory) < 2:
+        return ""
+
+    scores = [p["score"] for p in trajectory]
+    first = scores[0]
+    last = scores[-1]
+
+    # Check for plateau/stall: 3+ consecutive same score in maillard/development
+    stall_score = None
+    stall_phase = None
+    run_count = 1
+    for i in range(1, len(trajectory)):
+        if (trajectory[i]["score"] == trajectory[i - 1]["score"]
+                and trajectory[i].get("phase") in ("maillard", "development")):
+            run_count += 1
+            if run_count >= 3:
+                stall_score = trajectory[i]["score"]
+                stall_phase = trajectory[i].get("phase", "")
+        else:
+            run_count = 1
+
+    # Check for rapid jump: any single jump >= 3
+    big_jump_time = None
+    big_jump_to = None
+    for i in range(1, len(trajectory)):
+        if trajectory[i]["score"] - trajectory[i - 1]["score"] >= 3:
+            big_jump_time = trajectory[i]["elapsed"]
+            big_jump_to = trajectory[i]["score"]
+            break
+
+    if stall_score is not None:
+        return f"Stalled at {stall_score} during {stall_phase}"
+    if big_jump_time is not None:
+        return f"Rapid jump to {big_jump_to} at {_fmt_time(big_jump_time)}"
+    return f"Steady progression {first}\u2192{last}"
+
+
 def display_roast_summary(analysis):
     """Display a summary of key roast data.
 
@@ -110,23 +158,41 @@ def display_roast_summary(analysis):
     if ror_info.get("severity"):
         lines.append(_box_row(f"  RoR smoothness: {ror_info['severity']}", "", w))
 
-    # Visual development (from r1-eye sentinel)
+    # Visual development (from sentinel camera system)
     visual_scores = m.get("visual_development_scores", [])
     if visual_scores:
         lines.append(_box_separator(w))
-        lines.append(_box_row("Visual Development (r1-eye)", "", w))
-        # Show score progression as a compact timeline
-        score_line = "  "
+        source_label = m.get("visual_source", "Sentinel")
+        lines.append(_box_row(f"Visual Development ({source_label})", "", w))
+
+        # Group trajectory points by phase for readability
+        phase_groups = {}
+        phase_order = []
         for entry in visual_scores:
-            t = format_time(entry["elapsed"])
-            s = entry["score"]
-            score_line += f"{t}:{s} "
-            # Wrap if line gets too long
-            if len(score_line) > w - 8:
+            phase = entry.get("phase", "unknown") or "unknown"
+            if phase not in phase_groups:
+                phase_groups[phase] = []
+                phase_order.append(phase)
+            phase_groups[phase].append(entry)
+
+        for phase in phase_order:
+            label = phase.capitalize()
+            score_line = f"  {label}: "
+            for entry in phase_groups[phase]:
+                t = format_time(entry["elapsed"])
+                s = entry["score"]
+                score_line += f"{t}:{s} "
+                # Wrap if line gets too long
+                if len(score_line) > w - 8:
+                    lines.append(_box_row(score_line.rstrip(), "", w))
+                    score_line = "    "
+            if score_line.strip():
                 lines.append(_box_row(score_line.rstrip(), "", w))
-                score_line = "  "
-        if score_line.strip():
-            lines.append(_box_row(score_line.rstrip(), "", w))
+
+        # One-line interpretive summary of trajectory shape
+        summary = _visual_summary(visual_scores)
+        if summary:
+            lines.append(_box_row(f"  {summary}", "", w))
 
         final = m.get("visual_final_score", 0)
         uniformity = m.get("visual_uniformity", "unknown")

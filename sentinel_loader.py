@@ -1,9 +1,9 @@
 """Load and match sentinel visual data to roast logs.
 
-Finds sentinel JSON session files from r1-eye and GoPro capture
-directories and matches them to .alog roast files by date. Extracts
-development score trajectory, final visual score, and uniformity
-assessment for integration into the roast analysis pipeline.
+Finds sentinel JSON session files from sentinel capture directories
+(GoPro, r1-eye, etc.) and matches them to .alog roast files by date.
+Extracts development score trajectory, final visual score, and
+uniformity assessment for integration into the roast analysis pipeline.
 """
 
 import json
@@ -101,16 +101,49 @@ def match_sentinel_to_roast(roast_date, roast_time="", captures_dir=None):
 def _load_sentinel(path):
     """Load and parse a sentinel JSON file.
 
+    Injects _source_path into the returned dict so downstream code
+    can determine which sentinel system produced the data.
+
     Args:
         path: Path to the sentinel JSON file.
 
     Returns:
-        Parsed dict, or None on error.
+        Parsed dict with _source_path added, or None on error.
     """
     try:
-        return json.loads(Path(path).read_text())
+        data = json.loads(Path(path).read_text())
+        # In-memory annotation for source labeling (not written back to JSON)
+        data["_source_path"] = str(path)
+        return data
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def _infer_source_label(path_str):
+    """Derive a display label from the sentinel file's directory path.
+
+    Uses the grandparent directory name to identify the sentinel system:
+    gopro/captures/file.json -> "GoPro", r1-eye/captures/file.json -> "r1-eye".
+
+    Args:
+        path_str: File path string to the sentinel JSON.
+
+    Returns:
+        Human-readable source label string.
+    """
+    if not path_str:
+        return "Sentinel"
+
+    p = Path(path_str)
+    # Walk up to find a recognizable directory name
+    for part in reversed(p.parts):
+        lower = part.lower()
+        if "gopro" in lower:
+            return "GoPro"
+        if "r1-eye" in lower or "r1_eye" in lower:
+            return "r1-eye"
+
+    return "Sentinel"
 
 
 def extract_visual_data(sentinel_data):
@@ -161,9 +194,13 @@ def extract_visual_data(sentinel_data):
     # Classify uniformity from the text descriptions
     uniformity_rating = _classify_uniformity(uniformity_notes)
 
+    # Infer which sentinel system produced this data
+    source_label = _infer_source_label(sentinel_data.get("_source_path", ""))
+
     return {
         "session_id": sentinel_data.get("session_id", ""),
         "bean_name": sentinel_data.get("bean_name", ""),
+        "visual_source": source_label,
         "trajectory": trajectory,
         "score_count": len(trajectory),
         "final_score": final_obs.get("development_score", 0) if final_obs else 0,
@@ -218,3 +255,60 @@ def _classify_uniformity(notes):
     if counts[0][0] > 0:
         return counts[0][1]
     return "unknown"
+
+
+def enrich_trajectory_with_temps(visual_data, roast_data):
+    """Add BT and ET from .alog data to each trajectory point.
+
+    Matches each visual observation's elapsed time against the .alog
+    time series to find the closest temperature reading.
+
+    Args:
+        visual_data: Visual data dict from extract_visual_data().
+        roast_data: Extracted roast data from roast_parser.extract_roast_data().
+
+    Returns:
+        The visual_data dict (modified in place), or None if inputs invalid.
+    """
+    if not visual_data or not roast_data:
+        return visual_data
+
+    trajectory = visual_data.get("trajectory", [])
+    if not trajectory:
+        return visual_data
+
+    timex = roast_data.get("timex", [])
+    bt = roast_data.get("bt", [])
+    et = roast_data.get("et", [])
+    timeindex = roast_data.get("timeindex", [])
+
+    if not timex or not bt or len(timeindex) < 1:
+        return visual_data
+
+    # CHARGE time is the zero reference for elapsed seconds
+    charge_idx = timeindex[0]
+    if charge_idx >= len(timex):
+        return visual_data
+    charge_time = timex[charge_idx]
+
+    for point in trajectory:
+        # Target absolute time = charge time + elapsed seconds from sentinel
+        target_time = charge_time + point["elapsed"]
+
+        # Find the closest timex index (linear scan — arrays are small)
+        best_idx = 0
+        best_diff = abs(timex[0] - target_time)
+        for i in range(1, len(timex)):
+            diff = abs(timex[i] - target_time)
+            if diff < best_diff:
+                best_diff = diff
+                best_idx = i
+
+        # Add temperatures if the match is within 5 seconds
+        if best_diff <= 5:
+            if best_idx < len(bt):
+                point["bt"] = round(bt[best_idx], 1)
+            if best_idx < len(et):
+                point["et"] = round(et[best_idx], 1)
+
+    return visual_data

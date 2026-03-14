@@ -20,7 +20,7 @@ def analyze_roast(data, bean_profile=None, visual_data=None):
     """
     metrics = extract_metrics(data)
 
-    # Merge visual data from r1-eye sentinel if available
+    # Merge sentinel visual data if available
     if visual_data:
         metrics = add_visual_metrics(metrics, visual_data)
 
@@ -74,7 +74,7 @@ def generate_recommendations(comparisons, metrics, bean_profile=None):
     if bean_profile:
         recs.extend(_flavor_gap_recommendations(bean_profile, metrics))
 
-    # 4. Visual-based recommendations (from r1-eye sentinel)
+    # 4. Visual-based recommendations (from sentinel camera)
     recs.extend(_visual_recommendations(metrics))
 
     # Sort by priority (1=highest)
@@ -420,10 +420,12 @@ def _flavor_gap_recommendations(bean_profile, metrics):
 
 
 def _visual_recommendations(metrics):
-    """Generate recommendations based on r1-eye sentinel visual data.
+    """Generate recommendations based on sentinel visual data.
 
     Analyzes the development score trajectory and uniformity to detect
     issues like score plateaus (stalling) and uneven development.
+    If BT data has been enriched into trajectory points, it is included
+    in recommendation text for actionable context.
     """
     recs = []
     trajectory = metrics.get("visual_development_scores", [])
@@ -447,12 +449,18 @@ def _visual_recommendations(metrics):
                 plateau_count = 1
 
     if plateau_count >= 3:
+        # Find BT at the start of the plateau for context
+        plateau_bt_str = ""
+        for pt in trajectory:
+            if pt["score"] == plateau_score and pt.get("bt"):
+                plateau_bt_str = f" (BT was around {pt['bt']}F)"
+                break
         recs.append({
             "priority": 2,
             "category": "Visual Dev",
             "text": (
                 f"Visual development stalled at score {plateau_score}/10 for "
-                f"{plateau_count + 1} consecutive readings. This may indicate "
+                f"{plateau_count + 1} consecutive readings{plateau_bt_str}. This may indicate "
                 f"insufficient heat during a critical phase. Consider maintaining "
                 f"or increasing heat input earlier."
             ),
@@ -464,12 +472,14 @@ def _visual_recommendations(metrics):
         curr = trajectory[i]
         jump = curr["score"] - prev["score"]
         if jump >= 3:
+            # Include BT at the jump point if available
+            bt_str = f" at {curr['bt']}F BT" if curr.get("bt") else ""
             recs.append({
                 "priority": 2,
                 "category": "Visual Dev",
                 "text": (
                     f"Rapid visual development jump ({prev['score']} to {curr['score']}) "
-                    f"at {_fmt_time(curr['elapsed'])}. This suggests heat was too "
+                    f"at {_fmt_time(curr['elapsed'])}{bt_str}. This suggests heat was too "
                     f"aggressive at that point. Reduce heat earlier for smoother progression."
                 ),
             })
@@ -575,6 +585,17 @@ def generate_next_roast_summary(comparisons, metrics, recommendations):
     if "drop_bt" in off_target and "HIGH" in off_target["drop_bt"] and "drop" not in seen:
         actions.append("Drop sooner after first crack to preserve origin character")
         seen.add("drop")
+
+    # Visual: poor uniformity → batch size or preheat
+    uniformity = metrics.get("visual_uniformity", "unknown")
+    if uniformity == "poor" and "uniformity" not in seen:
+        actions.append("Reduce batch size or preheat longer for more even development")
+        seen.add("uniformity")
+
+    # Visual: stalled development → maintain heat
+    if "stalled" in rec_texts and "visual_stall" not in seen:
+        actions.append("Maintain heat through mid-roast \u2014 visual development stalled")
+        seen.add("visual_stall")
 
     # Cap at 4
     return actions[:4]

@@ -34,7 +34,7 @@ from roast_display import (
     display_next_roast,
 )
 from coffee_lookup import lookup_bean, extract_bean_profile, ensure_server_running, stop_server
-from sentinel_loader import match_sentinel_to_roast, extract_visual_data
+from sentinel_loader import match_sentinel_to_roast, extract_visual_data, enrich_trajectory_with_temps
 
 # Paths
 PROJECT_DIR = Path(__file__).parent
@@ -128,7 +128,7 @@ def cmd_scan(args):
             else:
                 print(f"  Bean lookup: {lookup_status}")
 
-        # Look for matching r1-eye sentinel visual data
+        # Look for matching sentinel visual data (GoPro or r1-eye)
         visual_data = None
         roast_date = data.get("roast_date", "")
         roast_time = data.get("roast_time", "")
@@ -137,7 +137,10 @@ def cmd_scan(args):
             if sentinel:
                 visual_data = extract_visual_data(sentinel)
                 if visual_data:
-                    print(f"  Found sentinel visual data: {visual_data['score_count']} captures")
+                    # Enrich trajectory with .alog BT/ET temperatures
+                    enrich_trajectory_with_temps(visual_data, data)
+                    source = visual_data.get("visual_source", "Sentinel")
+                    print(f"  Found {source} visual data: {visual_data['score_count']} captures")
 
         # Run analysis
         analysis = analyze_roast(data, bean_profile, visual_data)

@@ -277,6 +277,7 @@ def add_visual_metrics(metrics, visual_data):
     if not visual_data:
         return metrics
 
+    metrics["visual_source"] = visual_data.get("visual_source", "Sentinel")
     metrics["visual_development_scores"] = visual_data.get("trajectory", [])
     metrics["visual_final_score"] = visual_data.get("final_score", 0)
     metrics["visual_uniformity"] = visual_data.get("uniformity_rating", "unknown")
