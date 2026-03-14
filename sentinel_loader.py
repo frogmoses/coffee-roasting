@@ -13,7 +13,7 @@ from pathlib import Path
 # Colon-separated capture directories: SENTINEL_CAPTURES_DIRS=/path/a:/path/b
 # Both r1-eye and GoPro sentinel systems produce identical JSON formats
 _env_dirs = os.environ.get("SENTINEL_CAPTURES_DIRS", "")
-CAPTURE_DIRS = [Path(d) for d in _env_dirs.split(":") if d]
+CAPTURE_DIRS = [Path(os.path.expanduser(d)) for d in _env_dirs.split(":") if d]
 
 
 def find_sentinel_logs(captures_dir=None):
