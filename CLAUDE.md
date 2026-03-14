@@ -34,6 +34,11 @@ coffee-roasting/
 ├── coffee_lookup.py        # find-coffee API client with auto server lifecycle
 ├── sentinel_loader.py      # Sentinel JSON loading, date-matching, visual extraction
 ├── pyproject.toml          # Package config (requires-python >=3.10, dep: requests)
+├── log-sync/               # Artisan log sync scripts for roaster machine
+│   ├── artisan-sync-watch.sh   # inotifywait watcher (systemd service)
+│   ├── artisan-sync.sh         # rsync to dev machine
+│   ├── artisan-sync.conf.example  # Config template (copy to .conf, fill in)
+│   └── artisan-sync.service    # systemd user unit
 ├── roast-logs/             # .alog and .png files from Artisan (gitignored)
 ├── roast_history.json      # Persistent analysis results (gitignored)
 └── reference/              # Hottop PDF manuals (gitignored)

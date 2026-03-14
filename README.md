@@ -4,7 +4,7 @@ Roast analysis tool for the Hottop KN-8828B-2K+ connected to Artisan. Analyzes `
 
 ## After a Roast
 
-Save the `.alog` file from Artisan into `roast-logs/`, then:
+Artisan logs auto-sync from the roaster to `roast-logs/` via inotifywait + rsync (see `log-sync/` for the watcher scripts and systemd service). Then:
 
 ```bash
 run_roast-analyzer analyze.py full
@@ -83,5 +83,5 @@ If the [r1-eye](https://github.com/frogmoses/r1-eye) or [GoPro](https://github.c
 ## Reference
 
 - Hottop manuals: download from [Hottop USA](https://hottopusa.com/hottop-roasters.html) and place in `reference/`
-- Roast logs: save `.alog` files from Artisan into `roast-logs/` (both directories are gitignored)
+- Roast logs: auto-synced from roaster to `roast-logs/` (gitignored); see `log-sync/` for setup
 - Technical details: [CLAUDE.md](CLAUDE.md)
