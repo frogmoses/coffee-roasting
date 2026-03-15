@@ -156,7 +156,16 @@ def display_roast_summary(analysis):
     lines.append(_box_row(f"  Heat adjustments: {m.get('heat_adjustments', 0)}", "", w))
     ror_info = m.get("ror_smoothness", {})
     if ror_info.get("severity"):
-        lines.append(_box_row(f"  RoR smoothness: {ror_info['severity']}", "", w))
+        # Show heat context alongside smoothness assessment
+        heat_corr = ror_info.get("heat_correlation", "unknown")
+        heat_count = m.get("heat_adjustments", 0)
+        if heat_corr == "low_input":
+            context = "(natural curve variation)"
+        elif heat_corr == "high_input":
+            context = f"({heat_count} heat changes)"
+        else:
+            context = f"({heat_count} heat changes)"
+        lines.append(_box_row(f"  RoR smoothness: {ror_info['severity']} {context}", "", w))
 
     # Visual development (from sentinel camera system)
     visual_scores = m.get("visual_development_scores", [])

@@ -72,7 +72,7 @@ If you don't specify an ID, the command uses the latest roast.
 - `[ ! ]` — worth improving
 - `[   ]` — info
 
-**Next Roast** box gives 2-4 concrete action items distilled from the analysis (e.g., "Charge hotter", "Plan 2-3 deliberate heat cuts").
+**Next Roast** box gives 2-4 concrete action items distilled from the analysis (e.g., "Charge hotter", "Hold heat steady longer between cuts").
 
 **Trend** table shows key metrics across all roasts so you can see progress.
 

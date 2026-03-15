@@ -101,14 +101,60 @@ Defined in `roast_metrics.py:10` as the `TARGETS` dict:
 
 Comparison status values: `"OK"`, `"!! HIGH"`, `"!! LOW"`.
 
+## RoR Smoothness Analysis (`roast_metrics.py:79`)
+
+`assess_ror_smoothness(data, heat_adjustment_count=0)` uses **phase-segmented oscillation counting**:
+
+- **Drying phase (CHARGE→DRY)**: Skipped — TP recovery naturally causes direction changes
+- **Maillard phase (DRY→FCs)**: Counted — this is where heat control matters most
+- **Development phase (FCs→DROP)**: Counted normally
+- **Fallback**: if `timeindex[1] == 0` (DRY not recorded), full CHARGE→DROP window with original thresholds
+
+Phase-segmented thresholds (lower since drying excluded): smooth ≤2, moderate 3-4, oscillating 5+.
+Full-window fallback thresholds: smooth ≤3, moderate 4-6, oscillating 7+.
+
+Return dict fields:
+- `oscillations`: total direction changes (maillard + dev only, or full-window if fallback)
+- `maillard_oscillations`, `dev_oscillations`: per-phase counts
+- `severity`: "smooth", "moderate", "oscillating", or "unknown"
+- `heat_correlation`: "low_input" (≤3 heat changes), "high_input" (>4), or "unknown"
+- `ror_min`, `ror_max`, `ror_mean`: RoR range stats
+- `details`: human-readable summary string
+
+`extract_metrics()` `:198` computes `heat_adjustments` first, then passes the count to `assess_ror_smoothness()`.
+
 ## Recommendation Engine (`roast_analysis.py`)
 
 `generate_recommendations()` `:48` produces recs from 4 categories:
 
-1. **Roast mechanics** (`_mechanic_recommendations` `:85`) — phase timing, heat control, RoR, temperatures
-2. **Bean-specific** (`_bean_recommendations` `:309`) — flavor profile advice based on find-coffee data
-3. **Flavor gap** (`_flavor_gap_recommendations` `:386`) — professional cupping notes vs actual results
-4. **Visual** (`_visual_recommendations` `:422`) — sentinel development scores with BT context
+1. **Roast mechanics** (`_mechanic_recommendations` `:85`) — root cause grouping, phase timing, heat control, context-aware RoR
+2. **Bean-specific** (`_bean_recommendations` `:432`) — flavor profile advice based on find-coffee data
+3. **Flavor gap** (`_flavor_gap_recommendations` `:509`) — professional cupping notes vs actual results
+4. **Visual** (`_visual_recommendations` `:545`) — sentinel development scores with BT context
+
+### Root cause grouping (`_mechanic_recommendations`)
+
+Before per-metric recommendations, related off-target metrics are combined into single recs:
+
+| Root cause | Trigger | Combined rec |
+|------------|---------|-------------|
+| Charge too cold | `tp_bt` LOW + `dry_phase_pct` HIGH | "Charge temp too low, stretched drying. Preheat more." |
+| Insufficient momentum | `ror_at_fc` LOW + `fc_bt` LOW | "Not enough heat into FC. Maintain steady heat through Maillard." |
+| Too much momentum | `ror_at_fc` HIGH + (`drop_bt` HIGH or `fc_bt` HIGH) | "Too much energy into/through FC. Cut heat earlier, drop sooner." |
+| Overdevelopment | `dev_phase_pct` HIGH + `drop_bt` HIGH | "Development running long with high drop. Drop earlier." |
+
+Grouped metric keys go into a `handled` set; the per-metric loop skips anything already handled.
+
+### Context-aware oscillation recommendations
+
+RoR oscillation recs branch on `heat_correlation` from `assess_ror_smoothness()`:
+
+| Heat correlation | Severity | Priority | Advice |
+|-----------------|----------|----------|--------|
+| `low_input` | moderate/oscillating | 3 (info) | Natural thermal behavior, hold heat steady longer |
+| `high_input` | oscillating | 1 (fix first) | Reduce heat adjustment frequency and magnitude |
+| `high_input` | moderate | 2 (improve) | Fewer, smaller adjustments |
+| `unknown` | any | 2 (improve) | Generic smooth-curve advice |
 
 ### Recommendation dict fields
 
@@ -121,18 +167,19 @@ Each rec is a dict with:
 ### Beginner-friendly features
 
 - **Actionable temperature recs**: `fc_bt` and `drop_bt` recs explain what the temperature means and what to do
-- **RoR linking**: when both RoR oscillation and low FC RoR recs are present, a post-pass (`roast_analysis.py:292-304`) appends a linking sentence
+- **RoR linking**: when both RoR oscillation and low FC RoR recs are present, a post-pass appends a linking sentence
 - **Cupping notes truncation**: Flavor Goal recs truncate professional notes to 2 sentences; full text via `--verbose`
-- **Priority legend**: displayed at top of recommendations box (`roast_display.py:308`)
+- **Priority legend**: displayed at top of recommendations box (`roast_display.py:317`)
 
 ### Next Roast Synthesis
 
-`generate_next_roast_summary()` `:528` maps off-target comparisons to concrete actions:
+`generate_next_roast_summary()` `:651` maps off-target comparisons to concrete actions:
 
 | Pattern | Action |
 |---------|--------|
 | Long drying / low TP | "Charge hotter" |
-| RoR oscillating / too many heat changes | "Plan deliberate heat cuts" |
+| RoR oscillating + low_input heat correlation | "Hold heat steady longer between cuts" |
+| RoR oscillating + high_input / too many heat changes | "Plan deliberate heat cuts" |
 | Low drop temp | "Run longer after FC" |
 | Low FC temp | "Maintain heat through Maillard" |
 | High FC RoR | "Cut heat earlier" |
@@ -150,13 +197,15 @@ Box width: 72 for recommendations/comparisons/next-roast, 62 for summaries/trend
 Key functions:
 - `_visual_summary()` `:54` — one-line trajectory interpretation (steady/stalled/rapid jump)
 - `display_roast_summary()` `:102` — temps, phases, RoR, phase-grouped visual scores, cupping notes
-- `display_bean_profile()` `:216` — cupping notes, flavor bars, cupping chart scores
-- `display_target_comparison()` `:271` — metric vs target table
-- `display_recommendations()` `:308` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
-- `display_next_roast()` `:368` — numbered action items
-- `display_roast_comparison()` `:412` — side-by-side delta table with improved/regressed
-- `display_trend()` `:467` — all roasts in a compact metric table
-- `display_roast_list()` `:506` — batch #, date, title, time, drop temp
+- `display_bean_profile()` `:225` — cupping notes, flavor bars, cupping chart scores
+- `display_target_comparison()` `:280` — metric vs target table
+- `display_recommendations()` `:317` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
+- `display_next_roast()` `:377` — numbered action items
+- `display_roast_comparison()` `:421` — side-by-side delta table with improved/regressed
+- `display_trend()` `:476` — all roasts in a compact metric table
+- `display_roast_list()` `:515` — batch #, date, title, time, drop temp
+
+RoR smoothness line shows heat context: `moderate (natural curve variation)` for low-input, `moderate (3 heat changes)` for high-input/unknown.
 
 ## .alog Technical Details
 
@@ -179,7 +228,7 @@ Built in `roast_parser.py:69`: `{batch_nr}_{title}_{roastisodate}` (e.g., `1_Eth
 
 ### Computed fields used
 
-Extracted in `roast_metrics.extract_metrics()` `:143`:
+Extracted in `roast_metrics.extract_metrics()` `:198`:
 - Phase times: `totaltime`, `dryphasetime`, `midphasetime`, `finishphasetime`
 - Temperatures: `CHARGE_BT`, `CHARGE_ET`, `TP_BT`, `TP_time`, `DRY_BT`, `FCs_BT`, `FCs_time`, `DROP_BT`, `DROP_time`, `MET`
 - RoR: `fcs_ror`, `dry_phase_ror`, `mid_phase_ror`, `finish_phase_ror`, `total_ror`
@@ -332,7 +381,7 @@ Development score scale (1-10): green → pale yellow → tan → cinnamon → c
 
 Trajectory points are enriched with BT/ET from the `.alog` by `enrich_trajectory_with_temps()` `:268`. These temperatures are included in visual recommendation text for actionable context.
 
-### Visual recommendation triggers (`_visual_recommendations` `:422`)
+### Visual recommendation triggers (`_visual_recommendations` `:545`)
 
 - Score plateau (3+ consecutive same score in maillard/development) -> increase heat (includes BT if available)
 - Rapid score jump (delta >= 3) -> too aggressive heat (includes BT if available)

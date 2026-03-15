@@ -76,19 +76,21 @@ def count_heat_adjustments(data):
     return count
 
 
-def assess_ror_smoothness(data):
+def assess_ror_smoothness(data, heat_adjustment_count=0):
     """Check for oscillation in the Rate of Rise curve.
 
-    Looks at the RoR between key milestones (DRY, FC, DROP) and
-    counts direction changes that indicate oscillation.
+    Excludes drying phase from oscillation counting since TP recovery
+    naturally causes direction changes that aren't meaningful oscillation.
+    Falls back to full-window analysis if DRY event wasn't recorded.
 
     Args:
         data: Extracted roast data.
+        heat_adjustment_count: Number of heater events (for correlation).
 
     Returns:
-        Dict with smoothness assessment: oscillation count, severity, and details.
+        Dict with smoothness assessment: oscillation count, severity,
+        phase-segmented counts, heat correlation, and details.
     """
-    computed = data.get("computed", {})
     bt = data.get("bt", [])
     timex = data.get("timex", [])
     timeindex = data.get("timeindex", [])
@@ -98,45 +100,98 @@ def assess_ror_smoothness(data):
 
     charge_idx = timeindex[0]
     drop_idx = timeindex[6] if timeindex[6] > 0 else len(bt) - 1
+    # Phase boundaries: DRY (index 1) and FCs (index 2)
+    dry_idx = timeindex[1] if len(timeindex) > 1 else 0
+    fc_idx = timeindex[2] if len(timeindex) > 2 else 0
 
     # Calculate RoR using 30-second window (~15 data points at 2s interval)
     window = 15
-    ror_values = []
-    for i in range(charge_idx + window, min(drop_idx + 1, len(bt))):
-        if i >= len(bt) or (i - window) < 0:
-            continue
-        dt = timex[i] - timex[i - window]
-        if dt > 0:
-            ror = (bt[i] - bt[i - window]) / dt * 60  # F/min
-            ror_values.append(ror)
 
-    if len(ror_values) < 5:
+    def _count_direction_changes(ror_vals):
+        """Count significant direction changes in a RoR segment."""
+        changes = 0
+        for i in range(2, len(ror_vals)):
+            prev_delta = ror_vals[i - 1] - ror_vals[i - 2]
+            curr_delta = ror_vals[i] - ror_vals[i - 1]
+            # Only count significant changes (> 1 F/min swing)
+            if prev_delta * curr_delta < 0 and abs(curr_delta - prev_delta) > 2:
+                changes += 1
+        return changes
+
+    def _calc_ror_segment(start_idx, end_idx):
+        """Calculate RoR values for a data index range."""
+        values = []
+        for i in range(max(start_idx, charge_idx + window), min(end_idx + 1, len(bt))):
+            if i >= len(bt) or (i - window) < 0:
+                continue
+            dt = timex[i] - timex[i - window]
+            if dt > 0:
+                ror = (bt[i] - bt[i - window]) / dt * 60  # F/min
+                values.append(ror)
+        return values
+
+    # If DRY event was recorded, do phase-segmented analysis
+    use_phases = dry_idx > 0
+
+    if use_phases:
+        # Maillard phase: DRY -> FCs (or DROP if FCs not recorded)
+        maillard_end = fc_idx if fc_idx > 0 else drop_idx
+        maillard_ror = _calc_ror_segment(dry_idx, maillard_end)
+        maillard_osc = _count_direction_changes(maillard_ror) if len(maillard_ror) >= 3 else 0
+
+        # Development phase: FCs -> DROP
+        dev_osc = 0
+        dev_ror = []
+        if fc_idx > 0:
+            dev_ror = _calc_ror_segment(fc_idx, drop_idx)
+            dev_osc = _count_direction_changes(dev_ror) if len(dev_ror) >= 3 else 0
+
+        direction_changes = maillard_osc + dev_osc
+        all_ror = maillard_ror + dev_ror
+
+        # Lower thresholds since drying is excluded
+        if direction_changes <= 2:
+            severity = "smooth"
+        elif direction_changes <= 4:
+            severity = "moderate"
+        else:
+            severity = "oscillating"
+    else:
+        # Fallback: full-window analysis (DRY not recorded)
+        all_ror = _calc_ror_segment(charge_idx, drop_idx)
+        direction_changes = _count_direction_changes(all_ror) if len(all_ror) >= 3 else 0
+        maillard_osc = 0
+        dev_osc = 0
+
+        # Original thresholds for full-window
+        if direction_changes <= 3:
+            severity = "smooth"
+        elif direction_changes <= 6:
+            severity = "moderate"
+        else:
+            severity = "oscillating"
+
+    if len(all_ror) < 5:
         return {"oscillations": 0, "severity": "unknown", "details": "Too few RoR points"}
 
-    # Count direction changes in RoR (sign changes in derivative)
-    direction_changes = 0
-    for i in range(2, len(ror_values)):
-        prev_delta = ror_values[i - 1] - ror_values[i - 2]
-        curr_delta = ror_values[i] - ror_values[i - 1]
-        # Only count significant changes (> 1 F/min swing)
-        if prev_delta * curr_delta < 0 and abs(curr_delta - prev_delta) > 2:
-            direction_changes += 1
-
-    # Severity assessment
-    if direction_changes <= 3:
-        severity = "smooth"
-    elif direction_changes <= 6:
-        severity = "moderate"
+    # Heat correlation: how many heat inputs vs oscillation output
+    if heat_adjustment_count <= 3:
+        heat_correlation = "low_input"
+    elif heat_adjustment_count > 4:
+        heat_correlation = "high_input"
     else:
-        severity = "oscillating"
+        heat_correlation = "unknown"
 
     return {
         "oscillations": direction_changes,
+        "maillard_oscillations": maillard_osc,
+        "dev_oscillations": dev_osc,
         "severity": severity,
-        "ror_min": round(min(ror_values), 1),
-        "ror_max": round(max(ror_values), 1),
-        "ror_mean": round(mean(ror_values), 1),
-        "details": f"{direction_changes} significant direction changes in RoR",
+        "heat_correlation": heat_correlation,
+        "ror_min": round(min(all_ror), 1),
+        "ror_max": round(max(all_ror), 1),
+        "ror_mean": round(mean(all_ror), 1),
+        "details": f"{direction_changes} significant direction changes in RoR (post-drying)",
     }
 
 
@@ -151,6 +206,9 @@ def extract_metrics(data):
     """
     computed = data.get("computed", {})
     phases = get_phase_percentages(computed)
+
+    # Compute heat adjustments first — needed by assess_ror_smoothness()
+    heat_adj_count = count_heat_adjustments(data)
 
     metrics = {
         # Phase percentages
@@ -188,11 +246,11 @@ def extract_metrics(data):
         "mid_delta_temp": computed.get("mid_phase_delta_temp", 0),
         "dev_delta_temp": computed.get("finish_phase_delta_temp", 0),
 
-        # Heat adjustments
-        "heat_adjustments": count_heat_adjustments(data),
+        # Heat adjustments (computed first — used by RoR smoothness)
+        "heat_adjustments": heat_adj_count,
 
-        # RoR smoothness
-        "ror_smoothness": assess_ror_smoothness(data),
+        # RoR smoothness (phase-segmented, with heat correlation)
+        "ror_smoothness": assess_ror_smoothness(data, heat_adj_count),
 
         # Energy
         "auc": computed.get("AUC", 0),

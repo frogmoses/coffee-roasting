@@ -83,14 +83,98 @@ def generate_recommendations(comparisons, metrics, bean_profile=None):
 
 
 def _mechanic_recommendations(comparisons, metrics):
-    """Generate recommendations based on roast mechanics."""
+    """Generate recommendations based on roast mechanics.
+
+    Uses root cause grouping to combine related off-target metrics into
+    single actionable recommendations, then handles remaining metrics
+    individually.
+    """
     recs = []
 
+    # Build lookup of off-target comparisons
+    off_target = {}
+    comp_lookup = {}
+    for comp in comparisons:
+        comp_lookup[comp["metric"]] = comp
+        if comp["status"] != "OK":
+            off_target[comp["metric"]] = comp
+
+    # Root cause grouping — combine related off-target metrics
+    handled = set()
+
+    # Charge too cold: low TP + long drying
+    tp_comp = off_target.get("tp_bt")
+    dry_comp = off_target.get("dry_phase_pct")
+    if (tp_comp and "LOW" in tp_comp["status"]
+            and dry_comp and "HIGH" in dry_comp["status"]):
+        recs.append({
+            "priority": 1,
+            "category": "Charge Temp",
+            "text": (
+                f"Charge temp too low (TP {tp_comp['actual']}F), stretched drying "
+                f"to {dry_comp['actual']}%. Preheat more to compress drying and "
+                f"free up Maillard time."
+            ),
+        })
+        handled.update(("tp_bt", "dry_phase_pct"))
+
+    # Insufficient momentum: low RoR at FC + low FC temp
+    ror_comp = off_target.get("ror_at_fc")
+    fc_comp = off_target.get("fc_bt")
+    if (ror_comp and "LOW" in ror_comp["status"]
+            and fc_comp and "LOW" in fc_comp["status"]):
+        recs.append({
+            "priority": 1,
+            "category": "RoR Control",
+            "text": (
+                f"Not enough heat into FC (RoR {ror_comp['actual']} F/min, FC at "
+                f"{fc_comp['actual']}F). Maintain steady heat through Maillard."
+            ),
+        })
+        handled.update(("ror_at_fc", "fc_bt"))
+
+    # Too much momentum: high RoR at FC + high drop or FC temp
+    drop_comp = off_target.get("drop_bt")
+    if (ror_comp and "HIGH" in ror_comp["status"]
+            and ((drop_comp and "HIGH" in drop_comp["status"])
+                 or (fc_comp and "HIGH" in fc_comp["status"]))):
+        recs.append({
+            "priority": 1,
+            "category": "RoR Control",
+            "text": (
+                f"Too much energy into/through FC (RoR {ror_comp['actual']} F/min). "
+                f"Cut heat earlier (~330F) and drop sooner."
+            ),
+        })
+        handled.add("ror_at_fc")
+        if drop_comp and "HIGH" in drop_comp["status"]:
+            handled.add("drop_bt")
+        if fc_comp and "HIGH" in fc_comp["status"]:
+            handled.add("fc_bt")
+
+    # Overdevelopment: high dev % + high drop temp
+    dev_comp = off_target.get("dev_phase_pct")
+    if (dev_comp and "HIGH" in dev_comp["status"]
+            and drop_comp and "HIGH" in drop_comp["status"]):
+        recs.append({
+            "priority": 1,
+            "category": "Phase Timing",
+            "text": (
+                f"Development running long ({dev_comp['actual']}%) with high drop "
+                f"({drop_comp['actual']}F). Drop earlier to preserve origin character."
+            ),
+        })
+        handled.update(("dev_phase_pct", "drop_bt"))
+
+    # Individual metric recommendations for anything not grouped
     for comp in comparisons:
         if comp["status"] == "OK":
             continue
 
         key = comp["metric"]
+        if key in handled:
+            continue
+
         actual = comp["actual"]
         status = comp["status"]
 
@@ -267,27 +351,66 @@ def _mechanic_recommendations(comparisons, metrics):
                     ),
                 })
 
-    # RoR smoothness check
+    # Context-aware RoR smoothness check
     ror_info = metrics.get("ror_smoothness", {})
-    if ror_info.get("severity") == "oscillating":
-        recs.append({
-            "priority": 1,
-            "category": "RoR Control",
-            "text": (
-                f"RoR curve is oscillating ({ror_info['oscillations']} direction changes). "
-                f"This causes uneven heat transfer and harsh/smoky notes. "
-                f"Reduce heat adjustment frequency and magnitude."
-            ),
-        })
-    elif ror_info.get("severity") == "moderate":
-        recs.append({
-            "priority": 2,
-            "category": "RoR Control",
-            "text": (
-                f"RoR has moderate oscillation ({ror_info['oscillations']} direction changes). "
-                f"Aim for a smooth declining curve with fewer, smaller adjustments."
-            ),
-        })
+    heat_corr = ror_info.get("heat_correlation", "unknown")
+    severity = ror_info.get("severity")
+    osc_count = ror_info.get("oscillations", 0)
+
+    if severity in ("oscillating", "moderate"):
+        if heat_corr == "low_input":
+            # Few heat changes — oscillation is natural thermal behavior, not user error
+            recs.append({
+                "priority": 3,
+                "category": "RoR Control",
+                "text": (
+                    f"RoR has {osc_count} direction changes despite few heat adjustments "
+                    f"({metrics.get('heat_adjustments', 0)}). This is likely natural thermal "
+                    f"behavior rather than control error. Try holding heat steady longer "
+                    f"before each cut, or cut slightly earlier before FC to smooth the curve."
+                ),
+            })
+        elif heat_corr == "high_input":
+            # Many heat changes — original strong warning
+            if severity == "oscillating":
+                recs.append({
+                    "priority": 1,
+                    "category": "RoR Control",
+                    "text": (
+                        f"RoR curve is oscillating ({osc_count} direction changes). "
+                        f"This causes uneven heat transfer and harsh/smoky notes. "
+                        f"Reduce heat adjustment frequency and magnitude."
+                    ),
+                })
+            else:
+                recs.append({
+                    "priority": 2,
+                    "category": "RoR Control",
+                    "text": (
+                        f"RoR has moderate oscillation ({osc_count} direction changes). "
+                        f"Aim for a smooth declining curve with fewer, smaller adjustments."
+                    ),
+                })
+        else:
+            # Unknown correlation — generic advice
+            if severity == "oscillating":
+                recs.append({
+                    "priority": 2,
+                    "category": "RoR Control",
+                    "text": (
+                        f"RoR curve is oscillating ({osc_count} direction changes). "
+                        f"Aim for a smooth declining curve through Maillard and development."
+                    ),
+                })
+            else:
+                recs.append({
+                    "priority": 2,
+                    "category": "RoR Control",
+                    "text": (
+                        f"RoR has moderate oscillation ({osc_count} direction changes). "
+                        f"Aim for a smooth declining curve with fewer, smaller adjustments."
+                    ),
+                })
 
     # Post-pass: link RoR oscillation and low FC RoR recs if both present
     has_oscillation = any(
@@ -556,9 +679,15 @@ def generate_next_roast_summary(comparisons, metrics, recommendations):
         actions.append("Charge hotter — aim for a turning point around 145-150F to compress drying")
         seen.add("charge")
 
-    # RoR oscillating or too many heat changes → plan deliberate cuts
+    # RoR oscillating or too many heat changes → advice depends on heat correlation
+    ror_info = metrics.get("ror_smoothness", {})
+    heat_corr = ror_info.get("heat_correlation", "unknown")
     if "Heat Control" in high_pri_cats or "oscillat" in rec_texts:
-        actions.append("Plan 2-3 deliberate heat cuts instead of frequent small adjustments")
+        if heat_corr == "low_input":
+            # User already makes few cuts — different advice
+            actions.append("Hold heat steady longer between cuts — the curve will smooth naturally")
+        else:
+            actions.append("Plan 2-3 deliberate heat cuts instead of frequent small adjustments")
         seen.add("heat_cuts")
 
     # Low drop temp → let roast run longer
