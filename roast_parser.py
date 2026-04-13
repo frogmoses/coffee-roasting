@@ -128,9 +128,12 @@ def _decode_events(raw, timex, timeindex):
     event_strings = raw.get("specialeventsStrings", [])
     type_names = raw.get("etypes", ["Fan", "Drum", "Damper", "Heater", "--"])
 
-    # CHARGE index for calculating relative time
+    # CHARGE index for calculating relative time.
+    # Artisan uses -1 to mean "CHARGE not set", and a malformed/empty .alog
+    # can leave timex empty — bound-check both ends so negative or oversize
+    # indices don't crash indexing.
     charge_idx = timeindex[0] if timeindex else 0
-    charge_time = timex[charge_idx] if charge_idx < len(timex) else 0
+    charge_time = timex[charge_idx] if 0 <= charge_idx < len(timex) else 0
 
     events = []
     for i in range(len(event_indices)):
@@ -143,7 +146,7 @@ def _decode_events(raw, timex, timeindex):
         percentage = (evalue - 1) * 10
 
         # Get absolute and relative time
-        abs_time = timex[idx] if idx < len(timex) else 0
+        abs_time = timex[idx] if 0 <= idx < len(timex) else 0
         rel_time = abs_time - charge_time
 
         events.append({

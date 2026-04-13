@@ -196,14 +196,18 @@ Box width: 72 for recommendations/comparisons/next-roast, 62 for summaries/trend
 
 Key functions:
 - `_visual_summary()` `:54` — one-line trajectory interpretation (steady/stalled/rapid jump)
-- `display_roast_summary()` `:102` — temps, phases, RoR, phase-grouped visual scores, cupping notes
-- `display_bean_profile()` `:225` — cupping notes, flavor bars, cupping chart scores
-- `display_target_comparison()` `:280` — metric vs target table
-- `display_recommendations()` `:317` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
-- `display_next_roast()` `:377` — numbered action items
-- `display_roast_comparison()` `:421` — side-by-side delta table with improved/regressed
-- `display_trend()` `:476` — all roasts in a compact metric table
-- `display_roast_list()` `:515` — batch #, date, title, time, drop temp
+- `display_roast_summary()` `:102` — temps (+ CHARGE warning if `charge_bt` is missing), phases with time+RoR annotation, RoR, phase-grouped visual scores, cupping notes
+- `display_bean_profile()` — cupping notes, flavor bars, cupping chart scores
+- `display_target_comparison(comparisons, metrics=None)` — metric vs target table. When `metrics` is passed, phase rows (dry/mid/dev) get a `-> mm:ss at X F/min` sub-line so the headline percentage isn't the only signal (dry_phase_pct is a ratio and hides whether a miss is from phase duration or total-time denominator). Callers in `analyze.py` pass `analysis["metrics"]`.
+- `display_recommendations()` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
+- `display_next_roast()` — numbered action items
+- `display_roast_comparison()` — side-by-side delta table with improved/regressed
+- `display_trend()` — all roasts in a compact metric table
+- `display_roast_list()` — batch #, date, title, time, drop temp
+
+**Phase breakdown time/RoR annotation fields**: `dry_phase_time`/`dry_phase_ror`, `mid_phase_time`/`mid_phase_ror`, `dev_phase_time`/`dev_phase_ror` (all populated by `extract_metrics()` in `roast_metrics.py`). Note the development RoR field is `dev_phase_ror`, not `finish_phase_ror` — the internal Artisan field name is `finishphase` but the extracted metric is keyed `dev_phase_ror`.
+
+**CHARGE data-quality warning**: `display_roast_summary()` surfaces `! CHARGE temperature not recorded - mark CHARGE manually next roast.` when `metrics["charge_bt"]` is 0/missing. This is in addition to the aggregate warnings at the top of the summary box. Does not mutate history — display-time only.
 
 RoR smoothness line shows heat context: `moderate (natural curve variation)` for low-input, `moderate (3 heat changes)` for high-input/unknown.
 

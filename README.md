@@ -72,6 +72,10 @@ If you don't specify an ID, the command uses the latest roast.
 - `[ ! ]` — worth improving
 - `[   ]` — info
 
+**Phase Breakdown** and **Target Comparison** show each phase's raw time and RoR next to the percentage — e.g. `Drying: 61.6% (8:30 @ 26.8 F/min)` — so you can tell whether a high drying % is coming from a long phase or a short total time.
+
+**CHARGE warning**: if `charge_bt` wasn't recorded (missed/late CHARGE press), a warning line appears in the summary so you know to mark CHARGE manually next roast.
+
 **Next Roast** box gives 2-4 concrete action items distilled from the analysis (e.g., "Charge hotter", "Hold heat steady longer between cuts").
 
 **Trend** table shows key metrics across all roasts so you can see progress.

@@ -137,6 +137,9 @@ def display_roast_summary(analysis):
     lines.append(_box_row(f"  Dry End: {m.get('dry_bt', 0)}F", "", w))
     lines.append(_box_row(f"  First Crack: {m.get('fc_bt', 0)}F", f"@ {format_time(m.get('fc_time', 0))}", w))
     lines.append(_box_row(f"  Drop: {m.get('drop_bt', 0)}F", f"@ {format_time(m.get('drop_time', 0))}", w))
+    # Warn if CHARGE wasn't recorded — RoR math for drying will be off
+    if not m.get("charge_bt"):
+        lines.append(_box_row("  ! CHARGE temperature not recorded - mark CHARGE manually next roast.", "", w))
     lines.append(_box_separator(w))
 
     # Phase breakdown
@@ -144,9 +147,12 @@ def display_roast_summary(analysis):
     dry_t = format_time(m.get("dry_phase_time", 0))
     mid_t = format_time(m.get("mid_phase_time", 0))
     dev_t = format_time(m.get("dev_phase_time", 0))
-    lines.append(_box_row(f"  Drying:      {m.get('dry_phase_pct', 0):5.1f}%", f"({dry_t})", w))
-    lines.append(_box_row(f"  Maillard:    {m.get('mid_phase_pct', 0):5.1f}%", f"({mid_t})", w))
-    lines.append(_box_row(f"  Development: {m.get('dev_phase_pct', 0):5.1f}%", f"({dev_t})", w))
+    dry_ror = m.get("dry_phase_ror", 0)
+    mid_ror = m.get("mid_phase_ror", 0)
+    dev_ror = m.get("dev_phase_ror", 0)
+    lines.append(_box_row(f"  Drying:      {m.get('dry_phase_pct', 0):5.1f}%", f"({dry_t} @ {dry_ror} F/min)", w))
+    lines.append(_box_row(f"  Maillard:    {m.get('mid_phase_pct', 0):5.1f}%", f"({mid_t} @ {mid_ror} F/min)", w))
+    lines.append(_box_row(f"  Development: {m.get('dev_phase_pct', 0):5.1f}%", f"({dev_t} @ {dev_ror} F/min)", w))
     lines.append(_box_separator(w))
 
     # RoR
@@ -277,11 +283,15 @@ def display_bean_profile(bean_profile):
     return "\n".join(lines)
 
 
-def display_target_comparison(comparisons):
+def display_target_comparison(comparisons, metrics=None):
     """Display a table comparing metrics against targets.
 
     Args:
         comparisons: From roast_metrics.compare_to_targets().
+        metrics: Optional metrics dict. When provided, phase rows get a
+            second-line annotation showing raw time and RoR so the user can
+            see whether a percentage miss reflects long phase duration or
+            short total time.
 
     Returns:
         Formatted string.
@@ -299,6 +309,13 @@ def display_target_comparison(comparisons):
     lines.append(_box_row(hdr, "", w))
     lines.append(_box_separator(w))
 
+    # Map comparison key -> (time field, ror field) for phase context lines
+    phase_context = {
+        "dry_phase_pct": ("dry_phase_time", "dry_phase_ror"),
+        "mid_phase_pct": ("mid_phase_time", "mid_phase_ror"),
+        "dev_phase_pct": ("dev_phase_time", "dev_phase_ror"),
+    }
+
     for comp in comparisons:
         status = comp["status"]
         # Add visual indicator
@@ -309,6 +326,15 @@ def display_target_comparison(comparisons):
 
         row = f"  {comp['label']:<20} {comp['actual_display']:>10} {comp['target_str']:>16} {indicator:>10}"
         lines.append(_box_row(row, "", w))
+
+        # For phase rows, append a sub-line with raw time/RoR so the headline
+        # percentage isn't the only signal (it's a ratio, which hides whether
+        # the miss came from phase duration or from total-time denominator).
+        if metrics is not None and comp.get("metric") in phase_context:
+            time_field, ror_field = phase_context[comp["metric"]]
+            t_str = format_time(metrics.get(time_field, 0))
+            ror_val = metrics.get(ror_field, 0)
+            lines.append(_box_row(f"    -> {t_str} at {ror_val} F/min", "", w))
 
     lines.append(_box_footer(w))
     return "\n".join(lines)

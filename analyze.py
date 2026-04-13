@@ -217,7 +217,7 @@ def cmd_recommend(args):
 
     analysis = history[roast_id]
     verbose = getattr(args, "verbose", False)
-    print(display_target_comparison(analysis.get("comparisons", [])))
+    print(display_target_comparison(analysis.get("comparisons", []), analysis.get("metrics", {})))
     print()
     print(display_recommendations(analysis.get("recommendations", []), verbose=verbose))
 
@@ -279,7 +279,7 @@ def cmd_full(args):
 
     # Target comparison
     print()
-    print(display_target_comparison(analysis.get("comparisons", [])))
+    print(display_target_comparison(analysis.get("comparisons", []), analysis.get("metrics", {})))
 
     # Recommendations
     verbose = getattr(args, "verbose", False)
