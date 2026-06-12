@@ -17,12 +17,14 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
+import traceback
 from pathlib import Path
 
 from roast_parser import parse_alog, extract_roast_data, scan_roast_logs
 from roast_metrics import extract_metrics, compare_to_targets
-from roast_analysis import analyze_roast, compare_roasts, trend_analysis, generate_next_roast_summary
+from roast_analysis import analyze_roast, compare_roasts, generate_next_roast_summary
 from roast_display import (
     display_roast_summary,
     display_bean_profile,
@@ -50,8 +52,14 @@ def load_history():
 
 
 def save_history(history):
-    """Save analysis history to disk."""
-    HISTORY_FILE.write_text(json.dumps(history, indent=2, default=str))
+    """Save analysis history to disk atomically.
+
+    Writes to a temp file then renames, so a crash mid-write can't
+    corrupt the only copy of the history (it's gitignored).
+    """
+    tmp_path = HISTORY_FILE.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(history, indent=2, default=str))
+    os.replace(tmp_path, HISTORY_FILE)
 
 
 def get_sorted_analyses(history):
@@ -83,10 +91,15 @@ def resolve_roast_id(history, roast_id=None):
         if str(data.get("batch_nr", "")) == str(roast_id):
             return rid
 
-    # Try partial name match
-    for rid in history:
-        if roast_id.lower() in rid.lower():
-            return rid
+    # Try partial name match — prefer the most recent roast so e.g.
+    # "Ethiopia" resolves to the latest Ethiopia, not the first scanned
+    matches = [rid for rid in history if roast_id.lower() in rid.lower()]
+    if matches:
+        matches.sort(key=lambda rid: (
+            history[rid].get("roast_date", ""),
+            history[rid].get("batch_nr", 0),
+        ))
+        return matches[-1]
 
     return None
 
@@ -106,10 +119,25 @@ def cmd_scan(args):
 
     new_count = 0
     for alog_path in alog_files:
-        # Parse the file
-        raw = parse_alog(alog_path)
-        data = extract_roast_data(raw)
+        # Parse the file — one corrupt .alog shouldn't block the whole scan
+        try:
+            raw = parse_alog(alog_path)
+            data = extract_roast_data(raw)
+        except (ValueError, FileNotFoundError, KeyError, IndexError, TypeError) as e:
+            print(f"  !! Skipping {alog_path.name}: {e}")
+            continue
         roast_id = data["roast_id"]
+
+        # Disambiguate ID collisions: two roasts with the same batch number,
+        # title, and date (e.g. duplicate batch numbers) would otherwise
+        # silently overwrite each other in history
+        existing = history.get(roast_id)
+        if (existing and existing.get("source_file")
+                and existing["source_file"] != str(alog_path)):
+            suffix = data.get("roast_time", "").replace(":", "")
+            if suffix:
+                roast_id = f"{roast_id}_{suffix}"
+                data["roast_id"] = roast_id
 
         # Skip if already analyzed (unless --force)
         if roast_id in history and not getattr(args, "force", False):
@@ -146,6 +174,13 @@ def cmd_scan(args):
         # Run analysis
         analysis = analyze_roast(data, bean_profile, visual_data)
         analysis["source_file"] = str(alog_path)
+
+        # Preserve cupping notes added via the 'cupping' command — they live
+        # only in history, so a --force re-scan must not wipe them
+        prior = history.get(roast_id)
+        if prior and prior.get("cupping_notes") and not analysis.get("cupping_notes"):
+            analysis["cupping_notes"] = prior["cupping_notes"]
+
         history[roast_id] = analysis
         new_count += 1
         print(f"  Analyzed: {roast_id}")
@@ -187,18 +222,23 @@ def cmd_compare(args):
         print("Need at least 2 analyzed roasts to compare.")
         return
 
-    # Resolve IDs (default to last two)
-    id1 = resolve_roast_id(history, args.id1)
-    id2 = resolve_roast_id(history, args.id2)
-
-    if not id1 or not id2:
-        # Default to the two most recent
+    # Resolve IDs. A given-but-unresolvable ID is an error — silently
+    # substituting the latest roasts would compare the wrong pair.
+    if args.id1 is not None:
+        id1 = resolve_roast_id(history, args.id1)
+        if not id1:
+            print(f"Roast not found: {args.id1}")
+            return
+    else:
         id1 = analyses[-2]["roast_id"]
-        id2 = analyses[-1]["roast_id"]
 
-    if id1 not in history or id2 not in history:
-        print("One or both roast IDs not found.")
-        return
+    if args.id2 is not None:
+        id2 = resolve_roast_id(history, args.id2)
+        if not id2:
+            print(f"Roast not found: {args.id2}")
+            return
+    else:
+        id2 = analyses[-1]["roast_id"]
 
     a1 = history[id1]
     a2 = history[id2]
@@ -340,6 +380,7 @@ def main():
                "  python analyze.py bean Ethiopia  # Look up a bean\n"
                "  python analyze.py cupping 1 --notes 'Bright berry, clean finish'\n",
     )
+    parser.add_argument("--debug", action="store_true", help="Show full traceback on errors")
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -406,6 +447,8 @@ def main():
             sys.exit(130)
         except Exception as e:
             print(f"Error: {e}")
+            if getattr(args, "debug", False):
+                traceback.print_exc()
             sys.exit(1)
     else:
         parser.print_help()

@@ -33,7 +33,9 @@ coffee-roasting/
 ├── roast_display.py        # Terminal formatting with Unicode box-drawing
 ├── coffee_lookup.py        # find-coffee API client with auto server lifecycle
 ├── sentinel_loader.py      # Sentinel JSON loading, UUID/date matching, visual extraction
-├── pyproject.toml          # Package config (requires-python >=3.10, dep: requests)
+├── targets.json            # Optional per-key target overrides (not created by default)
+├── tests/                  # pytest suite (run: uv run pytest tests/)
+├── pyproject.toml          # Package config (requires-python >=3.10, dep: requests; dev: pytest)
 ├── log-sync/               # Artisan log sync scripts for roaster machine
 │   ├── artisan-sync-watch.sh   # inotifywait watcher (systemd service)
 │   ├── artisan-sync.sh         # rsync to dev machine
@@ -46,7 +48,7 @@ coffee-roasting/
 
 ## CLI Command -> Code Mapping
 
-Dispatch table in `analyze.py:389-398`. Each command maps to a `cmd_*` function:
+Dispatch table at the bottom of `analyze.py`. Each command maps to a `cmd_*` function:
 
 | Command | Function | Key flow |
 |---------|----------|----------|
@@ -59,9 +61,16 @@ Dispatch table in `analyze.py:389-398`. Each command maps to a `cmd_*` function:
 | `list` | `cmd_list()` `:306` | `get_sorted_analyses()` -> `display_roast_list()` |
 | `bean` | `cmd_bean()` `:313` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
 
-CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n` (cupping).
+CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n` (cupping), `--debug` (global; print traceback on errors).
 
-Roast ID resolution (`resolve_roast_id()` `:64`): exact match -> batch number -> partial name (case-insensitive).
+Roast ID resolution (`resolve_roast_id()`): exact match -> batch number -> partial name (case-insensitive, most recent roast wins on multiple matches).
+
+Scan behaviors:
+- A corrupt `.alog` is skipped with a warning instead of aborting the scan
+- Roast ID collisions (same batch/title/date from a different file) get a `_HHMM` suffix instead of silently overwriting
+- `--force` re-scan preserves `cupping_notes` previously added via the `cupping` command
+- `cmd_compare` errors on an unresolvable given ID instead of silently substituting the latest roasts (defaults to the two most recent only when IDs are omitted)
+- `save_history()` writes atomically (temp file + `os.replace`)
 
 ## Data Flow
 
@@ -85,23 +94,26 @@ Parallel enrichment during scan:
 
 ## Target Constants
 
-Defined in `roast_metrics.py:10` as the `TARGETS` dict:
+Defined in `roast_metrics.py` as `DEFAULT_TARGETS`; the active `TARGETS` dict merges optional per-key overrides from `targets.json` in the project root (no code change needed to recalibrate). Calibrated for the hot-charge regime (manual mode, ~300F charge, drop timed from FC) using roast history + theory (Hottop manual safety/FC points, Rao/Cropster RoR guidance, RoastRebels washed-African DTR).
 
 | Metric | Target | Tolerance/Range | Key |
 |--------|--------|-----------------|-----|
-| Drying phase | 45% | +/- 3% | `dry_phase_pct` |
-| Maillard phase | 40% | +/- 3% | `mid_phase_pct` |
-| Development phase | 15% | +/- 2% | `dev_phase_pct` |
-| Total time | 675s (11:15) | +/- 30s | `total_time` |
-| Turning point BT | 140-150F | range | `tp_bt` |
-| First crack BT | 358-362F | range | `fc_bt` |
-| Drop BT | 375-380F | range | `drop_bt` |
-| RoR at FC | 12-14 F/min | range | `ror_at_fc` |
+| Drying phase | 50% | +/- 5% | `dry_phase_pct` |
+| Maillard phase | 32% | +/- 4% | `mid_phase_pct` |
+| Development phase | 17% | +/- 3% | `dev_phase_pct` |
+| Dev time after FC | 90-125s | range | `dev_phase_time` |
+| Total time | 690s (11:30) | +/- 40s | `total_time` |
+| Turning point BT | 150-170F | range | `tp_bt` |
+| First crack BT | 356-366F | range | `fc_bt` |
+| Drop BT | 374-388F | range (diagnostic) | `drop_bt` |
+| RoR at FC | 14-18 F/min | range | `ror_at_fc` |
 | Heat adjustments | max 4 | hard max | `heat_adjustments` |
 
-Comparison status values: `"OK"`, `"!! HIGH"`, `"!! LOW"`.
+`dev_phase_time` (seconds FC→DROP, Artisan's `finishphasetime`) is the actionable development lever; `drop_bt` is treated as an *outcome* of dev time, not a steering target — recs translate drop misses into time-after-FC adjustments. `SAFETY_EJECT_BT = 395` (Hottop hard safety point; the machine also alerts at 356F = FC imminent).
 
-## RoR Smoothness Analysis (`roast_metrics.py:79`)
+Comparison status values: `"OK"`, `"!! HIGH"`, `"!! LOW"`. Metrics with value <= 0 (event not recorded; Artisan uses 0/-1) are skipped instead of flagged LOW — except `heat_adjustments`, where 0 is real. Seconds-based range targets display as M:SS.
+
+## RoR Smoothness Analysis (`roast_metrics.py`)
 
 `assess_ror_smoothness(data, heat_adjustment_count=0)` uses **phase-segmented oscillation counting**:
 
@@ -110,18 +122,23 @@ Comparison status values: `"OK"`, `"!! HIGH"`, `"!! LOW"`.
 - **Development phase (FCs→DROP)**: Counted normally
 - **Fallback**: if `timeindex[1] == 0` (DRY not recorded), full CHARGE→DROP window with original thresholds
 
+The ~30s RoR smoothing window is derived from the actual sampling interval (median of `timex` deltas), not a hardcoded point count.
+
 Phase-segmented thresholds (lower since drying excluded): smooth ≤2, moderate 3-4, oscillating 5+.
 Full-window fallback thresholds: smooth ≤3, moderate 4-6, oscillating 7+.
+
+**FC crash/flick detection** (Rao/Cropster): within 90s after FCs, a crash = RoR falls ≥8 F/min from its FC value to below 5 F/min; a flick = RoR climbs back ≥3 F/min after the post-FC minimum. Heuristic thresholds tuned for this machine.
 
 Return dict fields:
 - `oscillations`: total direction changes (maillard + dev only, or full-window if fallback)
 - `maillard_oscillations`, `dev_oscillations`: per-phase counts
 - `severity`: "smooth", "moderate", "oscillating", or "unknown"
-- `heat_correlation`: "low_input" (≤3 heat changes), "high_input" (>4), or "unknown"
+- `heat_correlation`: "low_input" (≤4 heat changes — within target) or "high_input" (≥5)
+- `fc_crash`, `fc_flick`: booleans; `crash_min_ror`: post-FC RoR minimum when crashed
 - `ror_min`, `ror_max`, `ror_mean`: RoR range stats
 - `details`: human-readable summary string
 
-`extract_metrics()` `:198` computes `heat_adjustments` first, then passes the count to `assess_ror_smoothness()`.
+`extract_metrics()` computes `heat_adjustments` first, then passes the count to `assess_ror_smoothness()`. Weight loss is zeroed when `weightout` is 0 (Artisan reports a garbage 100%).
 
 ## Recommendation Engine (`roast_analysis.py`)
 
@@ -140,10 +157,17 @@ Before per-metric recommendations, related off-target metrics are combined into 
 |------------|---------|-------------|
 | Charge too cold | `tp_bt` LOW + `dry_phase_pct` HIGH | "Charge temp too low, stretched drying. Preheat more." |
 | Insufficient momentum | `ror_at_fc` LOW + `fc_bt` LOW | "Not enough heat into FC. Maintain steady heat through Maillard." |
-| Too much momentum | `ror_at_fc` HIGH + (`drop_bt` HIGH or `fc_bt` HIGH) | "Too much energy into/through FC. Cut heat earlier, drop sooner." |
-| Overdevelopment | `dev_phase_pct` HIGH + `drop_bt` HIGH | "Development running long with high drop. Drop earlier." |
+| Too much momentum | `ror_at_fc` HIGH + (`drop_bt` HIGH or `fc_bt` HIGH) | "Too much energy into/through FC. Cut heat ~340F, shorten time after FC." |
+| Overdevelopment | `dev_phase_pct` HIGH + `drop_bt` HIGH | "Development ran long (X% / M:SS after FC) with high drop. Shorten time after FC ~15s." |
+| Dev length | `dev_phase_time` + `dev_phase_pct` same direction | One rec keyed on the time lever (extend/shorten time after FC ~15s) |
 
-Grouped metric keys go into a `handled` set; the per-metric loop skips anything already handled.
+Grouped metric keys go into a `handled` set; the per-metric loop skips anything already handled. Rec text derives target numbers from `TARGETS` via `_target_str()` so text can't drift from the active targets. `tp_bt` has both LOW and HIGH handlers. `drop_bt` HIGH recs append a safety note when within 5F of `SAFETY_EJECT_BT`. Heat-cut advice points at ~340F (the Hottop manual recommends cutting heat/raising fan at 340-345F before FC).
+
+### FC crash/flick recommendations
+
+Generated from `fc_crash`/`fc_flick` before the oscillation block:
+- Flick (priority 1): "RoR flicked back upward after first crack… never add heat during FC; plan one cut around 340-345F" — the char/smoky-ashy signature
+- Crash without flick (priority 2): "RoR crashed… carry more momentum into FC, smaller/earlier pre-FC cut"
 
 ### Context-aware oscillation recommendations
 
@@ -154,7 +178,7 @@ RoR oscillation recs branch on `heat_correlation` from `assess_ror_smoothness()`
 | `low_input` | moderate/oscillating | 3 (info) | Natural thermal behavior, hold heat steady longer |
 | `high_input` | oscillating | 1 (fix first) | Reduce heat adjustment frequency and magnitude |
 | `high_input` | moderate | 2 (improve) | Fewer, smaller adjustments |
-| `unknown` | any | 2 (improve) | Generic smooth-curve advice |
+| (missing/unknown) | any | 2 (improve) | Generic smooth-curve advice |
 
 ### Recommendation dict fields
 
@@ -173,18 +197,19 @@ Each rec is a dict with:
 
 ### Next Roast Synthesis
 
-`generate_next_roast_summary()` `:651` maps off-target comparisons to concrete actions:
+`generate_next_roast_summary()` maps off-target comparisons to concrete actions:
 
 | Pattern | Action |
 |---------|--------|
+| FC crash or flick | "Plan one heat cut around 340-345F, hold through first crack" |
 | Long drying / low TP | "Charge hotter" |
 | RoR oscillating + low_input heat correlation | "Hold heat steady longer between cuts" |
 | RoR oscillating + high_input / too many heat changes | "Plan deliberate heat cuts" |
-| Low drop temp | "Run longer after FC" |
-| Low FC temp | "Maintain heat through Maillard" |
-| High FC RoR | "Cut heat earlier" |
+| Short dev (`dev_phase_time` LOW or `drop_bt` LOW) | "Run 15-20s longer after first crack" |
+| Low FC temp | "Maintain heat through Maillard (no cuts before 340F)" |
+| High FC RoR | "Cut heat earlier, around 340F" |
 | Low FC RoR | "More momentum into FC" |
-| High drop temp | "Drop sooner" |
+| Long dev (`dev_phase_time` HIGH or `drop_bt` HIGH) | "Shorten time after first crack ~15s" |
 | Poor visual uniformity | "Reduce batch size or preheat longer" |
 | Visual development stalled | "Maintain heat through mid-roast" |
 
@@ -247,7 +272,7 @@ Extracted in `roast_metrics.extract_metrics()` `:198`:
 
 - API: `GET /api/purchased_coffees?name=<search>` — case-insensitive LIKE match
 - Returns: cupping_notes, 12 flavor scores (floral, berry, citrus, honey, sugar, caramel, fruit, cocoa, nut, rustic, spice, body), 10 cupping chart scores (dry_fragrance, wet_aroma, brightness, flavor, body, finish, sweetness, clean_cup, complexity, uniformity)
-- `coffee_lookup.py` checks if find-coffee is running, starts it via `FIND_COFFEE_WRAPPER` if not, queries, then kills the process in `finally` block (only if we started it)
+- `coffee_lookup.py` checks if find-coffee is running, starts it via `FIND_COFFEE_WRAPPER` if not (on the port parsed from `FIND_COFFEE_URL`, default 5000), queries, then kills the process (only if we started it)
 - Fallback search: if no results, retries with first 2 words of the bean name (`coffee_lookup.py:140`)
 - Env vars (all required for bean lookup to work, no defaults):
   - `FIND_COFFEE_URL` — API base URL (e.g., `http://localhost:5000`)
@@ -364,6 +389,8 @@ Both projects produce identical JSON:
 
 Development score scale (1-10): green → pale yellow → tan → cinnamon → city → full city → dark → Vienna → French → Italian.
 
+Sentinel JSON files are parsed once and cached by path+mtime (`_sentinel_cache`), since UUID matching scans every file per roast. `detect_plateau(trajectory, min_run=3)` is the shared stall detector used by both `_visual_summary()` (display) and `_visual_recommendations()` (analysis) so they always agree.
+
 ### Sentinel matching logic (`match_sentinel_to_roast` `:44`)
 
 1. **UUID match (deterministic)**: if the `.alog` has a `roastUUID`, scan all sentinel JSONs for a matching `roast_uuid` field — this is an exact 1:1 link
@@ -417,3 +444,4 @@ Loaded/saved by `load_history()`/`save_history()` in `analyze.py:45-54`.
 - Always provide comments
 - Use `uv` for package management (`uv add`, not pip)
 - Secrets via `run_roast-analyzer` wrapper, never in code
+- Run tests with `uv run pytest tests/` — pure-function tests over synthetic roast curves; no network or real roast-logs needed

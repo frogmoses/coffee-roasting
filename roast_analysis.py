@@ -4,7 +4,44 @@ Generates prioritized, actionable recommendations based on
 roast metrics and optional bean profile data from find-coffee.
 """
 
-from roast_metrics import extract_metrics, add_visual_metrics, compare_to_targets, validate_metrics, _fmt_time
+from sentinel_loader import detect_plateau
+from roast_metrics import (
+    TARGETS,
+    SAFETY_EJECT_BT,
+    extract_metrics,
+    add_visual_metrics,
+    compare_to_targets,
+    validate_metrics,
+    _fmt_time,
+)
+
+
+def _target_str(key):
+    """Human-readable target range for a metric, derived from TARGETS.
+
+    Keeps recommendation text in sync with the targets dict (including
+    any targets.json overrides) instead of hardcoding numbers.
+    """
+    t = TARGETS[key]
+    if "target" in t:
+        if key == "total_time":
+            return f"~{_fmt_time(t['target'])}"
+        return f"~{t['target']:g}{t['unit']}"
+    if "min" in t and "max" in t:
+        if t["unit"] == "s":
+            return f"{_fmt_time(t['min'])}-{_fmt_time(t['max'])}"
+        return f"{t['min']:g}-{t['max']:g}{t['unit']}"
+    return f"max {t['max']:g}"
+
+
+def _target_ideal(key):
+    """Single ideal value for a metric (range midpoint for min/max targets)."""
+    t = TARGETS[key]
+    if "target" in t:
+        return t["target"]
+    if "min" in t and "max" in t:
+        return (t["min"] + t["max"]) / 2
+    return t["max"]
 
 
 def analyze_roast(data, bean_profile=None, visual_data=None):
@@ -143,7 +180,8 @@ def _mechanic_recommendations(comparisons, metrics):
             "category": "RoR Control",
             "text": (
                 f"Too much energy into/through FC (RoR {ror_comp['actual']} F/min). "
-                f"Cut heat earlier (~330F) and drop sooner."
+                f"Cut heat earlier (around 340F, per the Hottop manual) and "
+                f"shorten the time after FC."
             ),
         })
         handled.add("ror_at_fc")
@@ -152,19 +190,45 @@ def _mechanic_recommendations(comparisons, metrics):
         if fc_comp and "HIGH" in fc_comp["status"]:
             handled.add("fc_bt")
 
-    # Overdevelopment: high dev % + high drop temp
+    # Overdevelopment: high dev % + high drop temp. Drop temp is an outcome
+    # of dev time under the FC-timed regime, so the fix is stated in seconds.
     dev_comp = off_target.get("dev_phase_pct")
+    devt_comp = off_target.get("dev_phase_time")
     if (dev_comp and "HIGH" in dev_comp["status"]
             and drop_comp and "HIGH" in drop_comp["status"]):
+        dev_secs = metrics.get("dev_phase_time", 0)
         recs.append({
             "priority": 1,
             "category": "Phase Timing",
             "text": (
-                f"Development running long ({dev_comp['actual']}%) with high drop "
-                f"({drop_comp['actual']}F). Drop earlier to preserve origin character."
+                f"Development ran long ({dev_comp['actual']}%, "
+                f"{_fmt_time(dev_secs)} after FC) and drop came in high "
+                f"({drop_comp['actual']}F). Shorten time after FC by ~15s "
+                f"to preserve origin character."
             ),
         })
-        handled.update(("dev_phase_pct", "drop_bt"))
+        handled.update(("dev_phase_pct", "drop_bt", "dev_phase_time"))
+
+    # Development length: time-after-FC and DTR agree on direction — one rec
+    # keyed on the time lever (the percentage is the diagnostic view)
+    if (devt_comp and dev_comp
+            and "dev_phase_pct" not in handled
+            and devt_comp["status"] == dev_comp["status"]):
+        if "HIGH" in devt_comp["status"]:
+            fix = "Shorten the time after FC by ~15s."
+        else:
+            fix = "Extend the time after FC by ~15s."
+        recs.append({
+            "priority": 2,
+            "category": "Phase Timing",
+            "text": (
+                f"Development was {_fmt_time(devt_comp['actual'])} after FC "
+                f"({dev_comp['actual']}% DTR; target "
+                f"{_target_str('dev_phase_time')} / {_target_str('dev_phase_pct')}). "
+                f"{fix}"
+            ),
+        })
+        handled.update(("dev_phase_time", "dev_phase_pct"))
 
     # Individual metric recommendations for anything not grouped
     for comp in comparisons:
@@ -184,8 +248,8 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 1,
                     "category": "Phase Timing",
                     "text": (
-                        f"Drying phase too long at {actual}% (target ~45%). "
-                        f"Increase charge temperature to compress drying. "
+                        f"Drying phase too long at {actual}% (target {_target_str('dry_phase_pct')}). "
+                        f"Increase charge temperature or early heat to compress drying. "
                         f"This robs time from Maillard where sweetness develops."
                     ),
                 })
@@ -194,7 +258,7 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 2,
                     "category": "Phase Timing",
                     "text": (
-                        f"Drying phase too short at {actual}% (target ~45%). "
+                        f"Drying phase too short at {actual}% (target {_target_str('dry_phase_pct')}). "
                         f"Lower charge temperature or initial heat to allow proper drying."
                     ),
                 })
@@ -205,7 +269,7 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 1,
                     "category": "Phase Timing",
                     "text": (
-                        f"Maillard phase too short at {actual}% (target ~40%). "
+                        f"Maillard phase too short at {actual}% (target {_target_str('mid_phase_pct')}). "
                         f"This means less time for sweetness and body to develop. "
                         f"Compress drying to free up time for Maillard."
                     ),
@@ -215,7 +279,7 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 2,
                     "category": "Phase Timing",
                     "text": (
-                        f"Maillard phase long at {actual}% (target ~40%). "
+                        f"Maillard phase long at {actual}% (target {_target_str('mid_phase_pct')}). "
                         f"Risk of baked flavors if RoR is too flat."
                     ),
                 })
@@ -226,7 +290,7 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 2,
                     "category": "Phase Timing",
                     "text": (
-                        f"Development at {actual}% is long (target ~15%). "
+                        f"Development at {actual}% is long (target {_target_str('dev_phase_pct')}). "
                         f"Risk of overdevelopment and losing origin character."
                     ),
                 })
@@ -235,18 +299,42 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 2,
                     "category": "Phase Timing",
                     "text": (
-                        f"Development at {actual}% is short (target ~15%). "
+                        f"Development at {actual}% is short (target {_target_str('dev_phase_pct')}). "
                         f"May result in grassy or underdeveloped flavors."
                     ),
                 })
 
+        elif key == "dev_phase_time":
+            # The direct lever: seconds from FC to drop
+            if "LOW" in status:
+                recs.append({
+                    "priority": 2,
+                    "category": "Phase Timing",
+                    "text": (
+                        f"Only {_fmt_time(actual)} after FC before drop "
+                        f"(target {_target_str('dev_phase_time')}). "
+                        f"Run 15-20 seconds longer after first crack."
+                    ),
+                })
+            else:
+                recs.append({
+                    "priority": 2,
+                    "category": "Phase Timing",
+                    "text": (
+                        f"{_fmt_time(actual)} after FC before drop is long "
+                        f"(target {_target_str('dev_phase_time')}). "
+                        f"Shorten the time after first crack by ~15s."
+                    ),
+                })
+
         elif key == "total_time":
+            target_time = _fmt_time(TARGETS["total_time"]["target"])
             if "HIGH" in status:
                 recs.append({
                     "priority": 2,
                     "category": "Roast Length",
                     "text": (
-                        f"Total roast time {_fmt_time(actual)} is long (target ~{_fmt_time(675)}). "
+                        f"Total roast time {_fmt_time(actual)} is long (target ~{target_time}). "
                         f"Risk of baked flavors. Increase charge temp or initial heat."
                     ),
                 })
@@ -255,7 +343,7 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 2,
                     "category": "Roast Length",
                     "text": (
-                        f"Total roast time {_fmt_time(actual)} is short (target ~{_fmt_time(675)}). "
+                        f"Total roast time {_fmt_time(actual)} is short (target ~{target_time}). "
                         f"May need to slow momentum earlier."
                     ),
                 })
@@ -273,14 +361,15 @@ def _mechanic_recommendations(comparisons, metrics):
                 })
 
         elif key == "ror_at_fc":
+            ror_target = _target_str("ror_at_fc")
             if "HIGH" in status:
                 recs.append({
                     "priority": 1,
                     "category": "RoR Control",
                     "text": (
-                        f"RoR at first crack is {actual} F/min (target 12-14). "
+                        f"RoR at first crack is {actual} F/min (target {ror_target}). "
                         f"Too much momentum going into crack. Start cutting heat "
-                        f"earlier (around 330-340F) for a gentler approach."
+                        f"earlier (around 340F) for a gentler approach."
                     ),
                 })
             else:
@@ -288,53 +377,73 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 2,
                     "category": "RoR Control",
                     "text": (
-                        f"RoR at first crack is {actual} F/min (target 12-14). "
+                        f"RoR at first crack is {actual} F/min (target {ror_target}). "
                         f"Low RoR may indicate stalling. Maintain steady heat through mid-roast."
                     ),
                 })
 
         elif key == "tp_bt":
+            tp_target = _target_str("tp_bt")
             if "LOW" in status:
                 recs.append({
                     "priority": 2,
                     "category": "Charge Temp",
                     "text": (
-                        f"Turning point at {actual}F is low (target 140-150F). "
+                        f"Turning point at {actual}F is low (target {tp_target}). "
                         f"Preheat more aggressively for a higher charge temperature. "
                         f"This will help compress the drying phase."
-                    ),
-                })
-
-        elif key == "drop_bt":
-            if "LOW" in status:
-                recs.append({
-                    "priority": 2,
-                    "category": "Temperature",
-                    "text": (
-                        f"Drop temp {actual}F is below target (375-380F). "
-                        f"The roast may taste underdeveloped. Let the roast "
-                        f"continue longer after first crack, or carry more "
-                        f"heat momentum into crack."
                     ),
                 })
             elif "HIGH" in status:
                 recs.append({
                     "priority": 2,
-                    "category": "Temperature",
+                    "category": "Charge Temp",
                     "text": (
-                        f"Drop temp {actual}F is above target (375-380F). "
-                        f"Risk of losing delicate origin flavors. Start "
-                        f"cutting heat earlier or drop sooner after first crack."
+                        f"Turning point at {actual}F is high (target {tp_target}). "
+                        f"Charge was hotter than usual — if drying compresses too "
+                        f"much, charge slightly cooler or trim early heat."
                     ),
                 })
 
-        elif key == "fc_bt":
+        elif key == "drop_bt":
+            # Drop temp is an outcome of dev time under the FC-timed regime —
+            # frame the fix in seconds after FC, not as a temp to aim at
+            drop_target = _target_str("drop_bt")
             if "LOW" in status:
                 recs.append({
                     "priority": 2,
                     "category": "Temperature",
                     "text": (
-                        f"First crack at {actual}F is below target (358-362F). "
+                        f"Drop temp {actual}F came in low (typical {drop_target}), "
+                        f"which usually means development was short or momentum "
+                        f"faded. Run longer after first crack, or carry more "
+                        f"heat into crack."
+                    ),
+                })
+            elif "HIGH" in status:
+                safety_note = ""
+                if actual >= SAFETY_EJECT_BT - 5:
+                    safety_note = (
+                        f" Note: the Hottop safety-ejects at {SAFETY_EJECT_BT}F BT."
+                    )
+                recs.append({
+                    "priority": 2,
+                    "category": "Temperature",
+                    "text": (
+                        f"Drop temp {actual}F came in high (typical {drop_target}), "
+                        f"which means development ran long or hot. Shorten the "
+                        f"time after first crack or cut heat earlier.{safety_note}"
+                    ),
+                })
+
+        elif key == "fc_bt":
+            fc_target = _target_str("fc_bt")
+            if "LOW" in status:
+                recs.append({
+                    "priority": 2,
+                    "category": "Temperature",
+                    "text": (
+                        f"First crack at {actual}F is below target ({fc_target}). "
                         f"The beans may not be fully developed. Ensure steady "
                         f"heat through the Maillard phase — avoid cutting heat "
                         f"too early."
@@ -345,14 +454,45 @@ def _mechanic_recommendations(comparisons, metrics):
                     "priority": 2,
                     "category": "Temperature",
                     "text": (
-                        f"First crack at {actual}F is above target (358-362F). "
+                        f"First crack at {actual}F is above target ({fc_target}). "
                         f"Too much energy going into crack. Reduce heat earlier "
-                        f"in the Maillard phase (around 320-330F)."
+                        f"in the Maillard phase (around 340F)."
                     ),
                 })
 
-    # Context-aware RoR smoothness check
+    # First-crack RoR defects (Rao/Cropster): crash bakes, flick chars.
+    # These outrank generic oscillation advice because they map directly
+    # to known flavor faults (e.g. smoky/ashy notes from a flick).
     ror_info = metrics.get("ror_smoothness", {})
+    if ror_info.get("fc_flick"):
+        crash_part = ""
+        if ror_info.get("fc_crash"):
+            crash_part = (
+                f" after crashing to {ror_info.get('crash_min_ror')} F/min"
+            )
+        recs.append({
+            "priority": 1,
+            "category": "RoR Control",
+            "text": (
+                f"RoR flicked back upward after first crack{crash_part}. "
+                f"The flick chars delicate beans (smoky/ashy notes). Never add "
+                f"heat during first crack — plan one deliberate cut around "
+                f"340-345F and hold through the crack."
+            ),
+        })
+    elif ror_info.get("fc_crash"):
+        recs.append({
+            "priority": 2,
+            "category": "RoR Control",
+            "text": (
+                f"RoR crashed to {ror_info.get('crash_min_ror')} F/min right "
+                f"after first crack. A crash bakes the coffee flat. Carry a "
+                f"little more momentum into FC and make the pre-FC heat cut "
+                f"smaller or earlier — don't add heat back during the crack."
+            ),
+        })
+
+    # Context-aware RoR smoothness check
     heat_corr = ror_info.get("heat_correlation", "unknown")
     severity = ror_info.get("severity")
     osc_count = ror_info.get("oscillations", 0)
@@ -558,32 +698,21 @@ def _visual_recommendations(metrics):
         return recs
 
     # Check for score plateau — consecutive readings with same score
-    # during maillard or development phases (indicates stalling)
-    plateau_count = 0
-    plateau_score = None
-    for i in range(1, len(trajectory)):
-        prev = trajectory[i - 1]
-        curr = trajectory[i]
-        if curr["score"] == prev["score"] and curr["phase"] in ("maillard", "development"):
-            if plateau_score == curr["score"]:
-                plateau_count += 1
-            else:
-                plateau_score = curr["score"]
-                plateau_count = 1
-
-    if plateau_count >= 3:
-        # Find BT at the start of the plateau for context
+    # during maillard or development phases (indicates stalling).
+    # Shared detector keeps this in sync with the summary line.
+    plateau = detect_plateau(trajectory)
+    if plateau:
+        # BT at the start of the plateau for context
         plateau_bt_str = ""
-        for pt in trajectory:
-            if pt["score"] == plateau_score and pt.get("bt"):
-                plateau_bt_str = f" (BT was around {pt['bt']}F)"
-                break
+        start_pt = trajectory[plateau["start_index"]]
+        if start_pt.get("bt"):
+            plateau_bt_str = f" (BT was around {start_pt['bt']}F)"
         recs.append({
             "priority": 2,
             "category": "Visual Dev",
             "text": (
-                f"Visual development stalled at score {plateau_score}/10 for "
-                f"{plateau_count + 1} consecutive readings{plateau_bt_str}. This may indicate "
+                f"Visual development stalled at score {plateau['score']}/10 for "
+                f"{plateau['run']} consecutive readings{plateau_bt_str}. This may indicate "
                 f"insufficient heat during a critical phase. Consider maintaining "
                 f"or increasing heat input earlier."
             ),
@@ -679,10 +808,15 @@ def generate_next_roast_summary(comparisons, metrics, recommendations):
         actions.append("Charge hotter — aim for a turning point around 145-150F to compress drying")
         seen.add("charge")
 
-    # RoR oscillating or too many heat changes → advice depends on heat correlation
+    # FC crash/flick → one planned cut, held through the crack
     ror_info = metrics.get("ror_smoothness", {})
+    if ror_info.get("fc_flick") or ror_info.get("fc_crash"):
+        actions.append("Plan one heat cut around 340-345F and hold it through first crack — no adjustments during the crack")
+        seen.add("heat_cuts")
+
+    # RoR oscillating or too many heat changes → advice depends on heat correlation
     heat_corr = ror_info.get("heat_correlation", "unknown")
-    if "Heat Control" in high_pri_cats or "oscillat" in rec_texts:
+    if ("Heat Control" in high_pri_cats or "oscillat" in rec_texts) and "heat_cuts" not in seen:
         if heat_corr == "low_input":
             # User already makes few cuts — different advice
             actions.append("Hold heat steady longer between cuts — the curve will smooth naturally")
@@ -690,19 +824,23 @@ def generate_next_roast_summary(comparisons, metrics, recommendations):
             actions.append("Plan 2-3 deliberate heat cuts instead of frequent small adjustments")
         seen.add("heat_cuts")
 
-    # Low drop temp → let roast run longer
-    if "drop_bt" in off_target and "LOW" in off_target["drop_bt"] and "drop" not in seen:
-        actions.append("Let the roast run 15-20 seconds longer after first crack before dropping")
-        seen.add("drop")
+    # Short development (time after FC or low drop temp) → run longer
+    short_dev = (
+        ("dev_phase_time" in off_target and "LOW" in off_target["dev_phase_time"])
+        or ("drop_bt" in off_target and "LOW" in off_target["drop_bt"])
+    )
+    if short_dev and "dev_time" not in seen:
+        actions.append("Run 15-20 seconds longer after first crack before dropping")
+        seen.add("dev_time")
 
     # Low FC temp → maintain heat through Maillard
     if "fc_bt" in off_target and "LOW" in off_target["fc_bt"] and "maillard" not in seen:
-        actions.append("Maintain steady heat through Maillard — avoid cutting heat before 330F")
+        actions.append("Maintain steady heat through Maillard — avoid cutting heat before 340F")
         seen.add("maillard")
 
     # High FC RoR → cut heat earlier
     if "ror_at_fc" in off_target and "HIGH" in off_target["ror_at_fc"] and "heat_cuts" not in seen:
-        actions.append("Start cutting heat earlier, around 330-340F, for a gentler approach to first crack")
+        actions.append("Start cutting heat earlier, around 340F, for a gentler approach to first crack")
         seen.add("heat_cuts")
 
     # Low FC RoR → more momentum
@@ -710,10 +848,14 @@ def generate_next_roast_summary(comparisons, metrics, recommendations):
         actions.append("Carry more heat momentum into first crack — avoid early heat cuts")
         seen.add("charge")
 
-    # High drop temp → drop sooner
-    if "drop_bt" in off_target and "HIGH" in off_target["drop_bt"] and "drop" not in seen:
-        actions.append("Drop sooner after first crack to preserve origin character")
-        seen.add("drop")
+    # Long development (time after FC or high drop temp) → shorten
+    long_dev = (
+        ("dev_phase_time" in off_target and "HIGH" in off_target["dev_phase_time"])
+        or ("drop_bt" in off_target and "HIGH" in off_target["drop_bt"])
+    )
+    if long_dev and "dev_time" not in seen:
+        actions.append("Shorten the time after first crack by ~15 seconds to preserve origin character")
+        seen.add("dev_time")
 
     # Visual: poor uniformity → batch size or preheat
     uniformity = metrics.get("visual_uniformity", "unknown")
@@ -743,21 +885,24 @@ def compare_roasts(analysis1, analysis2):
     m1 = analysis1.get("metrics", {})
     m2 = analysis2.get("metrics", {})
 
-    # Keys to compare with their labels and whether lower is better
+    # Keys to compare; ideals derive from TARGETS so they can't drift
+    # from the active target definitions (including targets.json overrides)
     compare_keys = [
-        ("dry_phase_pct", "Drying %", 45.0),
-        ("mid_phase_pct", "Maillard %", 40.0),
-        ("dev_phase_pct", "Development %", 15.0),
-        ("total_time", "Total time (s)", 675),
-        ("tp_bt", "Turning point", 145),
-        ("fc_bt", "FC temp", 360),
-        ("drop_bt", "Drop temp", 377.5),
-        ("ror_at_fc", "RoR at FC", 13),
-        ("heat_adjustments", "Heat changes", 3),
+        ("dry_phase_pct", "Drying %"),
+        ("mid_phase_pct", "Maillard %"),
+        ("dev_phase_pct", "Development %"),
+        ("dev_phase_time", "Dev time (s)"),
+        ("total_time", "Total time (s)"),
+        ("tp_bt", "Turning point"),
+        ("fc_bt", "FC temp"),
+        ("drop_bt", "Drop temp"),
+        ("ror_at_fc", "RoR at FC"),
+        ("heat_adjustments", "Heat changes"),
     ]
 
     changes = []
-    for key, label, ideal in compare_keys:
+    for key, label in compare_keys:
+        ideal = _target_ideal(key)
         v1 = m1.get(key, 0)
         v2 = m2.get(key, 0)
         delta = v2 - v1
@@ -784,48 +929,3 @@ def compare_roasts(analysis1, analysis2):
     return changes
 
 
-def trend_analysis(all_analyses):
-    """Track metric trends across multiple roasts.
-
-    Args:
-        all_analyses: List of analysis dicts, ordered chronologically.
-
-    Returns:
-        Dict with trend info for key metrics (improving/stable/worsening).
-    """
-    if len(all_analyses) < 2:
-        return {"note": "Need at least 2 roasts for trend analysis"}
-
-    trend_keys = [
-        ("dry_phase_pct", 45.0),
-        ("mid_phase_pct", 40.0),
-        ("dev_phase_pct", 15.0),
-        ("ror_at_fc", 13.0),
-        ("heat_adjustments", 3),
-    ]
-
-    trends = {}
-    for key, ideal in trend_keys:
-        values = [a["metrics"].get(key, 0) for a in all_analyses]
-        distances = [abs(v - ideal) for v in values]
-
-        # Simple trend: compare first half average to second half average
-        mid = len(distances) // 2
-        first_half = sum(distances[:mid]) / max(mid, 1)
-        second_half = sum(distances[mid:]) / max(len(distances) - mid, 1)
-
-        if second_half < first_half * 0.9:
-            direction = "improving"
-        elif second_half > first_half * 1.1:
-            direction = "worsening"
-        else:
-            direction = "stable"
-
-        trends[key] = {
-            "values": values,
-            "direction": direction,
-            "latest": values[-1],
-            "ideal": ideal,
-        }
-
-    return trends

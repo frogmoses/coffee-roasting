@@ -11,6 +11,7 @@ running externally, stop_server() leaves it alone.
 import os
 import subprocess
 import time
+from urllib.parse import urlparse
 
 import requests
 
@@ -67,9 +68,13 @@ def ensure_server_running(base_url=None):
     if not os.path.exists(wrapper):
         return False, f"FIND_COFFEE_WRAPPER not found: {wrapper}"
 
+    # Start the server on whatever port FIND_COFFEE_URL points at, so the
+    # health check polls the same port the server binds
+    port = str(urlparse(url).port or 5000)
+
     try:
         _server_process = subprocess.Popen(
-            [wrapper, "-m", "find_coffee.cli", "web", "--port", "5000", "--no-debug"],
+            [wrapper, "-m", "find_coffee.cli", "web", "--port", port, "--no-debug"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

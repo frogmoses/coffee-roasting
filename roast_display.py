@@ -4,6 +4,7 @@ Uses Unicode box-drawing characters for clean display.
 """
 
 from roast_metrics import _fmt_time
+from sentinel_loader import detect_plateau
 
 
 # Box-drawing characters
@@ -69,19 +70,11 @@ def _visual_summary(trajectory):
     first = scores[0]
     last = scores[-1]
 
-    # Check for plateau/stall: 3+ consecutive same score in maillard/development
-    stall_score = None
-    stall_phase = None
-    run_count = 1
-    for i in range(1, len(trajectory)):
-        if (trajectory[i]["score"] == trajectory[i - 1]["score"]
-                and trajectory[i].get("phase") in ("maillard", "development")):
-            run_count += 1
-            if run_count >= 3:
-                stall_score = trajectory[i]["score"]
-                stall_phase = trajectory[i].get("phase", "")
-        else:
-            run_count = 1
+    # Check for plateau/stall via the shared detector so the summary and
+    # the recommendation engine always agree on what counts as a stall
+    plateau = detect_plateau(trajectory)
+    stall_score = plateau["score"] if plateau else None
+    stall_phase = plateau["phase"] if plateau else None
 
     # Check for rapid jump: any single jump >= 3
     big_jump_time = None

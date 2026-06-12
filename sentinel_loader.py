@@ -106,8 +106,14 @@ def match_sentinel_to_roast(roast_date, roast_time="", roast_uuid="", captures_d
     return _load_sentinel(matches[-1][1])
 
 
+# Cache of parsed sentinel files keyed by path, invalidated on mtime change.
+# UUID matching scans every file per roast, so a scan over N roasts would
+# otherwise re-parse each JSON N times.
+_sentinel_cache = {}
+
+
 def _load_sentinel(path):
-    """Load and parse a sentinel JSON file.
+    """Load and parse a sentinel JSON file (cached by path + mtime).
 
     Injects _source_path into the returned dict so downstream code
     can determine which sentinel system produced the data.
@@ -118,13 +124,56 @@ def _load_sentinel(path):
     Returns:
         Parsed dict with _source_path added, or None on error.
     """
+    key = str(path)
     try:
+        mtime = os.path.getmtime(key)
+        cached = _sentinel_cache.get(key)
+        if cached and cached[0] == mtime:
+            return cached[1]
         data = json.loads(Path(path).read_text())
         # In-memory annotation for source labeling (not written back to JSON)
-        data["_source_path"] = str(path)
+        data["_source_path"] = key
+        _sentinel_cache[key] = (mtime, data)
         return data
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def detect_plateau(trajectory, min_run=3):
+    """Find the longest run of consecutive identical development scores
+    during maillard/development (a stall signature).
+
+    Shared by the display summary and the recommendation engine so both
+    report the same stall with the same threshold.
+
+    Args:
+        trajectory: List of trajectory point dicts (elapsed/score/phase).
+        min_run: Minimum consecutive same-score readings to count as a stall.
+
+    Returns:
+        Dict with score, run (reading count), phase, and start_index of the
+        longest qualifying run, or None if no plateau reaches min_run.
+    """
+    best = None
+    run = 1
+    start = 0
+    for i in range(1, len(trajectory)):
+        same = trajectory[i]["score"] == trajectory[i - 1]["score"]
+        in_phase = trajectory[i].get("phase") in ("maillard", "development")
+        if same and in_phase:
+            if run == 1:
+                start = i - 1
+            run += 1
+            if run >= min_run and (best is None or run > best["run"]):
+                best = {
+                    "score": trajectory[i]["score"],
+                    "run": run,
+                    "phase": trajectory[i].get("phase", ""),
+                    "start_index": start,
+                }
+        else:
+            run = 1
+    return best
 
 
 def _infer_source_label(path_str):
