@@ -36,6 +36,11 @@ DEFAULT_TARGETS = {
     # Enough momentum through FC to avoid an RoR crash, without flicking
     "ror_at_fc": {"min": 14, "max": 18, "unit": "F/min", "label": "RoR at FC"},
     "heat_adjustments": {"max": 4, "unit": "count", "label": "Heat adjustments"},
+    # Roast (organic) loss — moisture plus pyrolysis off-gassing. A measurable
+    # outcome of development, not a steering lever (like drop_bt). Washed
+    # light-medium loses ~13-16%; below drops underdeveloped, above darker than
+    # the fruit-forward target. Only compared when weight-out was entered.
+    "weight_loss_pct": {"min": 13.0, "max": 16.0, "unit": "%", "label": "Weight loss"},
 }
 
 # Hottop hard safety point — the machine ejects beans at this BT unless

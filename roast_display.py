@@ -120,7 +120,13 @@ def display_roast_summary(analysis):
         lines.append(_box_separator(w))
 
     lines.append(_box_row(f"Date: {analysis.get('roast_date', '?')}", f"Batch #{analysis.get('batch_nr', '?')}", w))
-    lines.append(_box_row(f"Weight: {m.get('weight_in', 0)}g", f"Total: {format_time(m.get('total_time', 0))}", w))
+    # Weight: show in -> out and roast loss % once weight-out has been entered
+    weight_out = m.get("weight_out", 0)
+    if weight_out:
+        weight_str = f"Weight: {m.get('weight_in', 0)}g -> {weight_out}g ({m.get('weight_loss_pct', 0)}% loss)"
+    else:
+        weight_str = f"Weight: {m.get('weight_in', 0)}g"
+    lines.append(_box_row(weight_str, f"Total: {format_time(m.get('total_time', 0))}", w))
     lines.append(_box_separator(w))
 
     # Key temperatures

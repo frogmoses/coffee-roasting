@@ -108,8 +108,9 @@ Defined in `roast_metrics.py` as `DEFAULT_TARGETS`; the active `TARGETS` dict me
 | Drop BT | 374-388F | range (diagnostic) | `drop_bt` |
 | RoR at FC | 14-18 F/min | range | `ror_at_fc` |
 | Heat adjustments | max 4 | hard max | `heat_adjustments` |
+| Weight loss | 13-16% | range (diagnostic) | `weight_loss_pct` |
 
-`dev_phase_time` (seconds FC→DROP, Artisan's `finishphasetime`) is the actionable development lever; `drop_bt` is treated as an *outcome* of dev time, not a steering target — recs translate drop misses into time-after-FC adjustments. `SAFETY_EJECT_BT = 395` (Hottop hard safety point; the machine also alerts at 356F = FC imminent).
+`dev_phase_time` (seconds FC→DROP, Artisan's `finishphasetime`) is the actionable development lever; `drop_bt` and `weight_loss_pct` are treated as *outcomes* of dev time, not steering targets — recs translate their misses into time-after-FC adjustments. `weight_loss_pct` (roast/organic loss) is only compared when weight-out was entered (it's 0/skipped otherwise — see the extraction note below). `SAFETY_EJECT_BT = 395` (Hottop hard safety point; the machine also alerts at 356F = FC imminent).
 
 Comparison status values: `"OK"`, `"!! HIGH"`, `"!! LOW"`. Metrics with value <= 0 (event not recorded; Artisan uses 0/-1) are skipped instead of flagged LOW — except `heat_adjustments`, where 0 is real. Seconds-based range targets display as M:SS.
 
@@ -161,7 +162,7 @@ Before per-metric recommendations, related off-target metrics are combined into 
 | Overdevelopment | `dev_phase_pct` HIGH + `drop_bt` HIGH | "Development ran long (X% / M:SS after FC) with high drop. Shorten time after FC ~15s." |
 | Dev length | `dev_phase_time` + `dev_phase_pct` same direction | One rec keyed on the time lever (extend/shorten time after FC ~15s) |
 
-Grouped metric keys go into a `handled` set; the per-metric loop skips anything already handled. Rec text derives target numbers from `TARGETS` via `_target_str()` so text can't drift from the active targets. `tp_bt` has both LOW and HIGH handlers. `drop_bt` HIGH recs append a safety note when within 5F of `SAFETY_EJECT_BT`. Heat-cut advice points at ~340F (the Hottop manual recommends cutting heat/raising fan at 340-345F before FC).
+Grouped metric keys go into a `handled` set; the per-metric loop skips anything already handled. The per-metric loop also handles `weight_loss_pct` (category "Development"): HIGH → roast went darker/drier, shorten time after FC or cut heat earlier; LOW → underdeveloped, run longer after FC. Framed as a development outcome (like `drop_bt`), not a direct lever. Rec text derives target numbers from `TARGETS` via `_target_str()` so text can't drift from the active targets. `tp_bt` has both LOW and HIGH handlers. `drop_bt` HIGH recs append a safety note when within 5F of `SAFETY_EJECT_BT`. Heat-cut advice points at ~340F (the Hottop manual recommends cutting heat/raising fan at 340-345F before FC).
 
 ### FC crash/flick recommendations
 
@@ -205,11 +206,11 @@ Each rec is a dict with:
 | Long drying / low TP | "Charge hotter" |
 | RoR oscillating + low_input heat correlation | "Hold heat steady longer between cuts" |
 | RoR oscillating + high_input / too many heat changes | "Plan deliberate heat cuts" |
-| Short dev (`dev_phase_time` LOW or `drop_bt` LOW) | "Run 15-20s longer after first crack" |
+| Short dev (`dev_phase_time` LOW, `drop_bt` LOW, or `weight_loss_pct` LOW) | "Run 15-20s longer after first crack" |
 | Low FC temp | "Maintain heat through Maillard (no cuts before 340F)" |
 | High FC RoR | "Cut heat earlier, around 340F" |
 | Low FC RoR | "More momentum into FC" |
-| Long dev (`dev_phase_time` HIGH or `drop_bt` HIGH) | "Shorten time after first crack ~15s" |
+| Long dev (`dev_phase_time` HIGH, `drop_bt` HIGH, or `weight_loss_pct` HIGH) | "Shorten time after first crack ~15s" |
 | Poor visual uniformity | "Reduce batch size or preheat longer" |
 | Visual development stalled | "Maintain heat through mid-roast" |
 
@@ -221,7 +222,7 @@ Box width: 72 for recommendations/comparisons/next-roast, 62 for summaries/trend
 
 Key functions:
 - `_visual_summary()` `:54` — one-line trajectory interpretation (steady/stalled/rapid jump)
-- `display_roast_summary()` `:102` — temps (+ CHARGE warning if `charge_bt` is missing), phases with time+RoR annotation, RoR, phase-grouped visual scores, cupping notes
+- `display_roast_summary()` `:102` — temps (+ CHARGE warning if `charge_bt` is missing), phases with time+RoR annotation, RoR, phase-grouped visual scores, cupping notes. The weight line shows `in -> out (X% loss)` once `weight_out` is entered, otherwise just `in`.
 - `display_bean_profile()` — cupping notes, flavor bars, cupping chart scores
 - `display_target_comparison(comparisons, metrics=None)` — metric vs target table. When `metrics` is passed, phase rows (dry/mid/dev) get a `-> mm:ss at X F/min` sub-line so the headline percentage isn't the only signal (dry_phase_pct is a ratio and hides whether a miss is from phase duration or total-time denominator). Callers in `analyze.py` pass `analysis["metrics"]`.
 - `display_recommendations()` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`

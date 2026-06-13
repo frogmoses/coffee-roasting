@@ -7,21 +7,32 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import analyze
-from roast_analysis import compare_roasts, generate_recommendations
+from roast_analysis import compare_roasts, generate_next_roast_summary, generate_recommendations
 from roast_metrics import TARGETS, compare_to_targets
 from sentinel_loader import detect_plateau, match_sentinel_to_roast
 
 
 # --- Recommendation engine ---
 
+def _on_target_value(key):
+    """An on-target value for a metric, derived from the active TARGETS.
+
+    Keeps the test baseline in sync with any targets.json overrides instead
+    of hardcoding numbers that drift when targets are recalibrated.
+    """
+    t = TARGETS[key]
+    if "target" in t:
+        return t["target"]
+    if "min" in t and "max" in t:
+        return round((t["min"] + t["max"]) / 2, 1)
+    # Hard-max target (e.g. heat_adjustments) — stay just under the limit
+    return max(0, t["max"] - 1)
+
+
 def _metrics_with(overrides):
     """Baseline on-target metrics dict with selected overrides applied."""
-    base = {
-        "dry_phase_pct": 50.0, "mid_phase_pct": 32.0, "dev_phase_pct": 17.0,
-        "dev_phase_time": 100, "total_time": 690, "tp_bt": 160.0,
-        "fc_bt": 360.0, "drop_bt": 380.0, "ror_at_fc": 16.0,
-        "heat_adjustments": 3, "ror_smoothness": {"severity": "smooth"},
-    }
+    base = {key: _on_target_value(key) for key in TARGETS}
+    base["ror_smoothness"] = {"severity": "smooth"}
     base.update(overrides)
     return base
 
@@ -59,6 +70,45 @@ def test_flick_rec_outranks_oscillation():
     recs = generate_recommendations(compare_to_targets(metrics), metrics)
     flick_recs = [r for r in recs if "flick" in r["text"].lower()]
     assert flick_recs and flick_recs[0]["priority"] == 1
+
+
+def test_weight_loss_on_target_yields_no_rec():
+    """A roast inside the weight-loss band produces no development rec."""
+    metrics = _metrics_with({"weight_loss_pct": 15.0})
+    comps = compare_to_targets(metrics)
+    wl = [c for c in comps if c["metric"] == "weight_loss_pct"][0]
+    assert wl["status"] == "OK"
+    recs = generate_recommendations(comps, metrics)
+    assert not any(r["category"] == "Development" for r in recs)
+
+
+def test_high_weight_loss_recommends_shortening_development():
+    metrics = _metrics_with({"weight_loss_pct": 18.0})
+    recs = generate_recommendations(compare_to_targets(metrics), metrics)
+    dev = [r for r in recs if r["category"] == "Development"]
+    assert dev and "high" in dev[0]["text"].lower()
+
+
+def test_low_weight_loss_recommends_more_development():
+    metrics = _metrics_with({"weight_loss_pct": 10.0})
+    recs = generate_recommendations(compare_to_targets(metrics), metrics)
+    dev = [r for r in recs if r["category"] == "Development"]
+    assert dev and "low" in dev[0]["text"].lower()
+
+
+def test_unrecorded_weight_loss_is_skipped():
+    """weight_loss_pct of 0 (no weight-out entered) is not flagged LOW."""
+    metrics = _metrics_with({"weight_loss_pct": 0})
+    comps = compare_to_targets(metrics)
+    assert not any(c["metric"] == "weight_loss_pct" for c in comps)
+
+
+def test_high_weight_loss_feeds_next_roast_shorten_action():
+    metrics = _metrics_with({"weight_loss_pct": 18.0})
+    comps = compare_to_targets(metrics)
+    recs = generate_recommendations(comps, metrics)
+    actions = generate_next_roast_summary(comps, metrics, recs)
+    assert any("shorten" in a.lower() for a in actions)
 
 
 def test_compare_roasts_ideals_follow_targets():

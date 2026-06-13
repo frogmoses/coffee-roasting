@@ -460,6 +460,33 @@ def _mechanic_recommendations(comparisons, metrics):
                     ),
                 })
 
+        elif key == "weight_loss_pct":
+            # Roast loss is an outcome of development, not a direct lever —
+            # frame the fix as time after FC / heat, mirroring drop_bt
+            wl_target = _target_str("weight_loss_pct")
+            if "HIGH" in status:
+                recs.append({
+                    "priority": 2,
+                    "category": "Development",
+                    "text": (
+                        f"Weight loss {actual}% is high (target {wl_target}), a sign "
+                        f"the roast went darker/drier than the fruit-forward target. "
+                        f"Shorten the time after first crack or cut heat earlier to "
+                        f"keep more origin character."
+                    ),
+                })
+            else:
+                recs.append({
+                    "priority": 2,
+                    "category": "Development",
+                    "text": (
+                        f"Weight loss {actual}% is low (target {wl_target}), which "
+                        f"points to underdevelopment — moisture and chaff didn't fully "
+                        f"drive off. Run longer after first crack or carry more heat "
+                        f"into the crack."
+                    ),
+                })
+
     # First-crack RoR defects (Rao/Cropster): crash bakes, flick chars.
     # These outrank generic oscillation advice because they map directly
     # to known flavor faults (e.g. smoky/ashy notes from a flick).
@@ -824,10 +851,11 @@ def generate_next_roast_summary(comparisons, metrics, recommendations):
             actions.append("Plan 2-3 deliberate heat cuts instead of frequent small adjustments")
         seen.add("heat_cuts")
 
-    # Short development (time after FC or low drop temp) → run longer
+    # Short development (time after FC, low drop temp, or low weight loss) → run longer
     short_dev = (
         ("dev_phase_time" in off_target and "LOW" in off_target["dev_phase_time"])
         or ("drop_bt" in off_target and "LOW" in off_target["drop_bt"])
+        or ("weight_loss_pct" in off_target and "LOW" in off_target["weight_loss_pct"])
     )
     if short_dev and "dev_time" not in seen:
         actions.append("Run 15-20 seconds longer after first crack before dropping")
@@ -848,10 +876,11 @@ def generate_next_roast_summary(comparisons, metrics, recommendations):
         actions.append("Carry more heat momentum into first crack — avoid early heat cuts")
         seen.add("charge")
 
-    # Long development (time after FC or high drop temp) → shorten
+    # Long development (time after FC, high drop temp, or high weight loss) → shorten
     long_dev = (
         ("dev_phase_time" in off_target and "HIGH" in off_target["dev_phase_time"])
         or ("drop_bt" in off_target and "HIGH" in off_target["drop_bt"])
+        or ("weight_loss_pct" in off_target and "HIGH" in off_target["weight_loss_pct"])
     )
     if long_dev and "dev_time" not in seen:
         actions.append("Shorten the time after first crack by ~15 seconds to preserve origin character")
@@ -898,6 +927,7 @@ def compare_roasts(analysis1, analysis2):
         ("drop_bt", "Drop temp"),
         ("ror_at_fc", "RoR at FC"),
         ("heat_adjustments", "Heat changes"),
+        ("weight_loss_pct", "Weight loss %"),
     ]
 
     changes = []

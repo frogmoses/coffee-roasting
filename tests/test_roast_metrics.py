@@ -80,12 +80,15 @@ def test_compare_skips_unrecorded_metrics():
 
 def test_compare_dev_time_range_formats_as_mmss():
     """Seconds-based range targets display as M:SS."""
+    # Pick an in-range value from the active target so the test is robust
+    # to targets.json recalibration
+    val = int((TARGETS["dev_phase_time"]["min"] + TARGETS["dev_phase_time"]["max"]) // 2)
     metrics = {key: 0 for key in TARGETS}
-    metrics["dev_phase_time"] = 100
+    metrics["dev_phase_time"] = val
     comparisons = compare_to_targets(metrics)
     devt = [c for c in comparisons if c["metric"] == "dev_phase_time"][0]
     assert devt["status"] == "OK"
-    assert devt["actual_display"] == "1:40"
+    assert devt["actual_display"] == f"{val // 60}:{val % 60:02d}"
     assert "-" in devt["target_str"]
 
 
