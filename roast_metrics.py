@@ -134,13 +134,19 @@ def count_heat_adjustments(data):
 def assess_ror_smoothness(data, heat_adjustment_count=0):
     """Check the Rate of Rise curve for oscillation and FC crash/flick.
 
+    BT is smoothed with a light (~10s) centered moving average before RoR
+    is computed, so the raw probe's quantization staircase doesn't read as
+    phantom oscillation or crash/flick.
+
     Excludes drying phase from oscillation counting since TP recovery
     naturally causes direction changes that aren't meaningful oscillation.
     Falls back to full-window analysis if DRY event wasn't recorded.
 
     Also detects the classic first-crack defects (Rao/Cropster):
     - Crash: RoR plunges toward stall right after FC (bakes the coffee)
-    - Flick: RoR climbs back up after the post-FC dip (chars the coffee)
+    - Flick: RoR climbs back up after a meaningful post-FC sag (chars the
+      coffee). A small rebound off a curve that never really declined is
+      normal thermal noise, not a flick.
 
     Args:
         data: Extracted roast data.
@@ -174,6 +180,27 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
     interval = sorted(deltas)[len(deltas) // 2] if deltas else 2.0
     window = max(3, round(30.0 / interval))
 
+    # Artisan logs raw BT, quantized to a coarse probe grid (~0.3-0.6F steps
+    # plus occasional spikes). Differencing that staircase directly turns
+    # quantization into phantom RoR oscillation and false crash/flick wobble.
+    # Smooth BT with a light centered moving average (~10s, well under the
+    # 30s RoR window) before computing RoR — enough to remove the staircase
+    # without flattening a real crash or flick. All RoR analysis below reads
+    # from this smoothed curve.
+    smooth_half = max(1, round(5.0 / interval))  # ~10s total span
+
+    def _smooth(values):
+        """Centered moving average over ~10s, robust to short index ranges."""
+        out = []
+        n = len(values)
+        for i in range(n):
+            lo = max(0, i - smooth_half)
+            hi = min(n, i + smooth_half + 1)
+            out.append(sum(values[lo:hi]) / (hi - lo))
+        return out
+
+    bt_s = _smooth(bt)
+
     def _count_direction_changes(ror_vals):
         """Count significant direction changes in a RoR segment."""
         changes = 0
@@ -186,14 +213,14 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
         return changes
 
     def _calc_ror_points(start_idx, end_idx):
-        """Calculate (time, RoR) pairs for a data index range."""
+        """Calculate (time, RoR) pairs for a data index range, from smoothed BT."""
         points = []
-        for i in range(max(start_idx, charge_idx + window), min(end_idx + 1, len(bt))):
-            if i >= len(bt) or (i - window) < 0:
+        for i in range(max(start_idx, charge_idx + window), min(end_idx + 1, len(bt_s))):
+            if i >= len(bt_s) or (i - window) < 0:
                 continue
             dt = timex[i] - timex[i - window]
             if dt > 0:
-                ror = (bt[i] - bt[i - window]) / dt * 60  # F/min
+                ror = (bt_s[i] - bt_s[i - window]) / dt * 60  # F/min
                 points.append((timex[i], ror))
         return points
 
@@ -246,8 +273,14 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
         return {"oscillations": 0, "severity": "unknown", "details": "Too few RoR points"}
 
     # First-crack crash/flick detection. Crash = RoR plunges to near-stall
-    # within ~90s after FC; flick = RoR climbs back >= 3 F/min after that
-    # dip (the char signature). Thresholds are heuristics for this machine.
+    # within ~90s after FC; flick = RoR climbs back up after a *meaningful*
+    # post-FC sag (the char signature). The rebound alone isn't enough — a
+    # gently wobbling curve that never really declined (e.g. FC 11 -> 8 -> 14)
+    # is normal thermal noise, not a flick, so require the dip to drop the RoR
+    # at least FLICK_MIN_SAG below its FC value before the rebound counts.
+    # Thresholds are heuristics for this machine.
+    FLICK_MIN_SAG = 5.0   # F/min the RoR must fall before a rebound is a flick
+    FLICK_MIN_REBOUND = 3.0  # F/min the RoR must climb back off the minimum
     fc_crash = False
     fc_flick = False
     crash_min_ror = None
@@ -258,11 +291,14 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
         if pre_fc and len(post_fc) >= 3:
             ror_at_fc = pre_fc[-1]
             min_t, min_v = min(post_fc, key=lambda p: p[1])
-            if ror_at_fc - min_v >= 8 and min_v < 5:
+            sag = ror_at_fc - min_v  # how far the RoR fell after FC
+            if sag >= 8 and min_v < 5:
                 fc_crash = True
                 crash_min_ror = round(min_v, 1)
             after_min = [v for t, v in post_fc if t > min_t]
-            if after_min and max(after_min) - min_v >= 3:
+            if (sag >= FLICK_MIN_SAG
+                    and after_min
+                    and max(after_min) - min_v >= FLICK_MIN_REBOUND):
                 fc_flick = True
 
     # Heat correlation: how many heat inputs vs oscillation output.

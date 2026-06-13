@@ -134,6 +134,27 @@ def test_crash_without_flick():
     assert result["fc_flick"] is False
 
 
+def test_gentle_wobble_after_fc_is_not_a_flick():
+    """A post-FC RoR that only sags a few F/min then drifts back up is normal
+    thermal noise, not a flick (regression: roast #8 wobbled ~11->8->14 with no
+    crash and was wrongly flagged as a char-signature flick). Sag of ~4 F/min
+    is below FLICK_MIN_SAG."""
+    data = _build_roast([(240, 12.0), (60, 8.0), (60, 13.0)])
+    result = assess_ror_smoothness(data)
+    assert result["fc_crash"] is False
+    assert result["fc_flick"] is False
+
+
+def test_moderate_sag_then_rebound_is_a_flick():
+    """A real flick without a full crash: RoR sags well below its FC value
+    (16->9, past FLICK_MIN_SAG) then climbs back, with no near-stall (so crash
+    stays False since the dip never reaches the <5 F/min crash floor)."""
+    data = _build_roast([(240, 16.0), (60, 9.0), (60, 14.0)])
+    result = assess_ror_smoothness(data)
+    assert result["fc_crash"] is False
+    assert result["fc_flick"] is True
+
+
 def test_window_adapts_to_sampling_interval():
     """Same curve at 1s sampling still produces sane RoR stats."""
     data = _build_roast([(240, 15.0), (100, 10.0)], interval=1.0)
