@@ -52,14 +52,14 @@ Dispatch table at the bottom of `analyze.py`. Each command maps to a `cmd_*` fun
 
 | Command | Function | Key flow |
 |---------|----------|----------|
-| `full` | `cmd_full()` `:257` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_target_comparison()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
-| `scan` | `cmd_scan()` `:94` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `enrich_trajectory_with_temps()` -> `analyze_roast()` -> `save_history()` |
-| `show` | `cmd_show()` `:163` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
-| `compare` | `cmd_compare()` `:181` | `compare_roasts()` -> `display_roast_comparison()` |
-| `recommend` | `cmd_recommend()` `:209` | `display_target_comparison()` -> `display_recommendations()` -> `generate_next_roast_summary()` -> `display_next_roast()` |
-| `cupping` | `cmd_cupping()` `:235` | Read/write `cupping_notes` in history |
-| `list` | `cmd_list()` `:306` | `get_sorted_analyses()` -> `display_roast_list()` |
-| `bean` | `cmd_bean()` `:313` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
+| `full` | `cmd_full()` `:297` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_target_comparison()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
+| `scan` | `cmd_scan()` `:107` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `enrich_trajectory_with_temps()` -> `analyze_roast()` -> `save_history()` |
+| `show` | `cmd_show()` `:198` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
+| `compare` | `cmd_compare()` `:216` | `compare_roasts()` -> `display_roast_comparison()` |
+| `recommend` | `cmd_recommend()` `:249` | `display_target_comparison()` -> `display_recommendations()` -> `generate_next_roast_summary()` -> `display_next_roast()` |
+| `cupping` | `cmd_cupping()` `:275` | Read/write `cupping_notes` in history |
+| `list` | `cmd_list()` `:346` | `get_sorted_analyses()` -> `display_roast_list()` |
+| `bean` | `cmd_bean()` `:353` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
 
 CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n` (cupping), `--debug` (global; print traceback on errors).
 
@@ -125,10 +125,12 @@ Comparison status values: `"OK"`, `"!! HIGH"`, `"!! LOW"`. Metrics with value <=
 
 The ~30s RoR smoothing window is derived from the actual sampling interval (median of `timex` deltas), not a hardcoded point count.
 
+**BT smoothing**: Artisan logs raw BT quantized to a coarse probe grid (~0.3-0.6F steps plus occasional spikes). Before any RoR is computed, BT is passed through a light centered moving average (~10s span, derived from the sampling interval via `smooth_half`) so the quantization staircase doesn't surface as phantom oscillation or false crash/flick. The ~10s smooth sits well under the 30s RoR window, so real crashes/flicks survive. All RoR analysis in `assess_ror_smoothness()` reads from this smoothed curve (`bt_s`); the displayed phase RoR figures come from Artisan's own `computed` fields and are unaffected.
+
 Phase-segmented thresholds (lower since drying excluded): smooth ≤2, moderate 3-4, oscillating 5+.
 Full-window fallback thresholds: smooth ≤3, moderate 4-6, oscillating 7+.
 
-**FC crash/flick detection** (Rao/Cropster): within 90s after FCs, a crash = RoR falls ≥8 F/min from its FC value to below 5 F/min; a flick = RoR climbs back ≥3 F/min after the post-FC minimum. Heuristic thresholds tuned for this machine.
+**FC crash/flick detection** (Rao/Cropster): within 90s after FCs, a crash = RoR falls ≥8 F/min from its FC value to below 5 F/min; a flick = RoR first sags ≥5 F/min below its FC value (`FLICK_MIN_SAG`), then climbs back ≥3 F/min off that minimum (`FLICK_MIN_REBOUND`). The sag gate is what keeps a gently wobbling, no-heat-input curve (e.g. FC 11 → 8 → 14) from being mis-flagged as a flick — the rebound alone is not enough. Heuristic thresholds tuned for this machine.
 
 Return dict fields:
 - `oscillations`: total direction changes (maillard + dev only, or full-window if fallback)
@@ -143,12 +145,12 @@ Return dict fields:
 
 ## Recommendation Engine (`roast_analysis.py`)
 
-`generate_recommendations()` `:48` produces recs from 4 categories:
+`generate_recommendations()` `:85` produces recs from 4 categories:
 
-1. **Roast mechanics** (`_mechanic_recommendations` `:85`) — root cause grouping, phase timing, heat control, context-aware RoR
-2. **Bean-specific** (`_bean_recommendations` `:432`) — flavor profile advice based on find-coffee data
-3. **Flavor gap** (`_flavor_gap_recommendations` `:509`) — professional cupping notes vs actual results
-4. **Visual** (`_visual_recommendations` `:545`) — sentinel development scores with BT context
+1. **Roast mechanics** (`_mechanic_recommendations` `:122`) — root cause grouping, phase timing, heat control, context-aware RoR
+2. **Bean-specific** (`_bean_recommendations` `:599`) — flavor profile advice based on find-coffee data
+3. **Flavor gap** (`_flavor_gap_recommendations` `:676`) — professional cupping notes vs actual results
+4. **Visual** (`_visual_recommendations` `:712`) — sentinel development scores with BT context
 
 ### Root cause grouping (`_mechanic_recommendations`)
 
@@ -194,7 +196,7 @@ Each rec is a dict with:
 - **Actionable temperature recs**: `fc_bt` and `drop_bt` recs explain what the temperature means and what to do
 - **RoR linking**: when both RoR oscillation and low FC RoR recs are present, a post-pass appends a linking sentence
 - **Cupping notes truncation**: Flavor Goal recs truncate professional notes to 2 sentences; full text via `--verbose`
-- **Priority legend**: displayed at top of recommendations box (`roast_display.py:317`)
+- **Priority legend**: displayed at top of recommendations box (`roast_display.py:361`)
 
 ### Next Roast Synthesis
 
@@ -221,8 +223,8 @@ Deduplicates via `seen` set keyed on action theme. Caps at 4 items.
 Box width: 72 for recommendations/comparisons/next-roast, 62 for summaries/trends.
 
 Key functions:
-- `_visual_summary()` `:54` — one-line trajectory interpretation (steady/stalled/rapid jump)
-- `display_roast_summary()` `:102` — temps (+ CHARGE warning if `charge_bt` is missing), phases with time+RoR annotation, RoR, phase-grouped visual scores, cupping notes. The weight line shows `in -> out (X% loss)` once `weight_out` is entered, otherwise just `in`.
+- `_visual_summary()` `:55` — one-line trajectory interpretation (steady/stalled/rapid jump)
+- `display_roast_summary()` `:95` — temps (+ CHARGE warning if `charge_bt` is missing), phases with time+RoR annotation, RoR, phase-grouped visual scores, cupping notes. The weight line shows `in -> out (X% loss)` once `weight_out` is entered, otherwise just `in`.
 - `display_bean_profile()` — cupping notes, flavor bars, cupping chart scores
 - `display_target_comparison(comparisons, metrics=None)` — metric vs target table. When `metrics` is passed, phase rows (dry/mid/dev) get a `-> mm:ss at X F/min` sub-line so the headline percentage isn't the only signal (dry_phase_pct is a ratio and hides whether a miss is from phase duration or total-time denominator). Callers in `analyze.py` pass `analysis["metrics"]`.
 - `display_recommendations()` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
@@ -258,7 +260,7 @@ Built in `roast_parser.py:69`: `{batch_nr}_{title}_{roastisodate}` (e.g., `1_Eth
 
 ### Computed fields used
 
-Extracted in `roast_metrics.extract_metrics()` `:198`:
+Extracted in `roast_metrics.extract_metrics()` `:328`:
 - Phase times: `totaltime`, `dryphasetime`, `midphasetime`, `finishphasetime`
 - Temperatures: `CHARGE_BT`, `CHARGE_ET`, `TP_BT`, `TP_time`, `DRY_BT`, `FCs_BT`, `FCs_time`, `DROP_BT`, `DROP_time`, `MET`
 - RoR: `fcs_ror`, `dry_phase_ror`, `mid_phase_ror`, `finish_phase_ror`, `total_ror`
@@ -274,7 +276,7 @@ Extracted in `roast_metrics.extract_metrics()` `:198`:
 - API: `GET /api/purchased_coffees?name=<search>` — case-insensitive LIKE match
 - Returns: cupping_notes, 12 flavor scores (floral, berry, citrus, honey, sugar, caramel, fruit, cocoa, nut, rustic, spice, body), 10 cupping chart scores (dry_fragrance, wet_aroma, brightness, flavor, body, finish, sweetness, clean_cup, complexity, uniformity)
 - `coffee_lookup.py` checks if find-coffee is running, starts it via `FIND_COFFEE_WRAPPER` if not (on the port parsed from `FIND_COFFEE_URL`, default 5000), queries, then kills the process (only if we started it)
-- Fallback search: if no results, retries with first 2 words of the bean name (`coffee_lookup.py:140`)
+- Fallback search: if no results, retries with first 2 words of the bean name (`coffee_lookup.py:151`)
 - Env vars (all required for bean lookup to work, no defaults):
   - `FIND_COFFEE_URL` — API base URL (e.g., `http://localhost:5000`)
   - `FIND_COFFEE_WRAPPER` — path to wrapper script that starts the server
@@ -411,9 +413,9 @@ Sentinel JSON files are parsed once and cached by path+mtime (`_sentinel_cache`)
 | `visual_score_count` | Count of scored captures | Number of trajectory points |
 | `visual_final_color` | Last observation's `color_assessment` | Text description |
 
-Trajectory points are enriched with BT/ET from the `.alog` by `enrich_trajectory_with_temps()` `:268`. These temperatures are included in visual recommendation text for actionable context.
+Trajectory points are enriched with BT/ET from the `.alog` by `enrich_trajectory_with_temps()` `:317`. These temperatures are included in visual recommendation text for actionable context.
 
-### Visual recommendation triggers (`_visual_recommendations` `:545`)
+### Visual recommendation triggers (`_visual_recommendations` `:712`)
 
 - Score plateau (3+ consecutive same score in maillard/development) -> increase heat (includes BT if available)
 - Rapid score jump (delta >= 3) -> too aggressive heat (includes BT if available)
@@ -437,7 +439,7 @@ Trajectory points are enriched with BT/ET from the `.alog` by `enrich_trajectory
 - `cupping_notes`, `roasting_notes`
 - `source_file` (path to .alog)
 
-Loaded/saved by `load_history()`/`save_history()` in `analyze.py:45-54`.
+Loaded/saved by `load_history()`/`save_history()` in `analyze.py:47-54`.
 
 ## Coding Conventions
 
