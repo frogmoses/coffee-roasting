@@ -519,6 +519,24 @@ def _mechanic_recommendations(comparisons, metrics):
             ),
         })
 
+    # Deceleration (Rao's 2nd rule): RoR should fall continuously through
+    # Maillard. A sustained climb means heat went in too late, so the bean
+    # temp is accelerating where it should decelerate.
+    if ror_info.get("ror_rising"):
+        rise = ror_info.get("ror_rise", 0)
+        recs.append({
+            "priority": 2,
+            "category": "RoR Control",
+            "text": (
+                f"RoR climbed ~{rise} F/min through Maillard instead of "
+                f"declining. A well-run roast has an ever-decelerating bean "
+                f"temp — a rising RoR means heat went in too late. Apply more "
+                f"energy early (hotter charge, or hold heat through drying) so "
+                f"the RoR peaks just after the turning point and falls steadily "
+                f"into first crack; avoid adding heat mid-Maillard."
+            ),
+        })
+
     # Context-aware RoR smoothness check
     heat_corr = ror_info.get("heat_correlation", "unknown")
     severity = ror_info.get("severity")
@@ -840,6 +858,12 @@ def generate_next_roast_summary(comparisons, metrics, recommendations):
     if ror_info.get("fc_flick") or ror_info.get("fc_crash"):
         actions.append("Plan one heat cut around 340-345F and hold it through first crack — no adjustments during the crack")
         seen.add("heat_cuts")
+
+    # Rising Maillard RoR (Rao's 2nd rule) → get the energy in earlier so the
+    # curve decelerates. Skip if "charge hotter" was already queued — same fix.
+    if ror_info.get("ror_rising") and "charge" not in seen and "decel" not in seen:
+        actions.append("Apply more heat early so the RoR peaks just after turning point and declines — no heat additions through Maillard")
+        seen.add("decel")
 
     # RoR oscillating or too many heat changes → advice depends on heat correlation
     heat_corr = ror_info.get("heat_correlation", "unknown")

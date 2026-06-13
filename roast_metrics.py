@@ -224,8 +224,42 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
                 points.append((timex[i], ror))
         return points
 
+    def _max_sustained_rise(points):
+        """Largest sustained climb in a RoR segment: (magnitude F/min, seconds).
+
+        Walks the series tracking the gain from the lowest preceding RoR
+        (running trough) to each later point, returning the biggest such
+        trough->peak gain and how long it took. A continuously declining
+        curve keeps setting new troughs, so the gain stays ~0; a curve that
+        climbs back up returns the size and duration of that climb. This is
+        what flags a violation of Rao's second rule (an ever-decelerating
+        bean temp) — distinct from oscillation (wobble) and from the post-FC
+        flick (a point event handled separately below).
+        """
+        if len(points) < 3:
+            return 0.0, 0.0
+        trough_v = points[0][1]
+        trough_t = points[0][0]
+        best_rise = 0.0
+        best_dur = 0.0
+        for t, v in points:
+            if v < trough_v:
+                trough_v = v
+                trough_t = t
+            elif v - trough_v > best_rise:
+                best_rise = v - trough_v
+                best_dur = t - trough_t
+        return best_rise, best_dur
+
     # If DRY event was recorded, do phase-segmented analysis
     use_phases = dry_idx > 0
+
+    # Deceleration (Rao's 2nd rule): the RoR should fall continuously through
+    # Maillard. A sustained climb here means heat went in too late. Only
+    # meaningful with phase structure — in the fallback (no DRY) the drying
+    # climb can't be excluded, so it's left at zero.
+    maillard_rise_mag = 0.0
+    maillard_rise_dur = 0.0
 
     if use_phases:
         # Maillard phase: DRY -> FCs (or DROP if FCs not recorded)
@@ -233,6 +267,7 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
         maillard_points = _calc_ror_points(dry_idx, maillard_end)
         maillard_ror = [v for _, v in maillard_points]
         maillard_osc = _count_direction_changes(maillard_ror) if len(maillard_ror) >= 3 else 0
+        maillard_rise_mag, maillard_rise_dur = _max_sustained_rise(maillard_points)
 
         # Development phase: FCs -> DROP
         dev_osc = 0
@@ -301,6 +336,16 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
                     and max(after_min) - min_v >= FLICK_MIN_REBOUND):
                 fc_flick = True
 
+    # Deceleration violation (Rao's 2nd rule): a sustained Maillard RoR climb.
+    # Require both a meaningful magnitude and a duration past the ~30s RoR
+    # window so a brief blip or quantization wobble doesn't trip it.
+    DECEL_MIN_RISE = 4.0       # F/min the RoR must climb to count as rising
+    DECEL_MIN_DURATION = 40.0  # seconds the climb must be sustained
+    ror_rising = (
+        maillard_rise_mag >= DECEL_MIN_RISE
+        and maillard_rise_dur >= DECEL_MIN_DURATION
+    )
+
     # Heat correlation: how many heat inputs vs oscillation output.
     # <= 4 is within the heat_adjustments target, so oscillation alongside
     # few inputs reads as natural thermal behavior rather than over-control.
@@ -318,6 +363,8 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
         "fc_crash": fc_crash,
         "fc_flick": fc_flick,
         "crash_min_ror": crash_min_ror,
+        "ror_rising": ror_rising,
+        "ror_rise": round(maillard_rise_mag, 1),
         "ror_min": round(min(all_ror), 1),
         "ror_max": round(max(all_ror), 1),
         "ror_mean": round(mean(all_ror), 1),

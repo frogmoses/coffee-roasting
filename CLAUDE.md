@@ -132,12 +132,15 @@ Full-window fallback thresholds: smooth ≤3, moderate 4-6, oscillating 7+.
 
 **FC crash/flick detection** (Rao/Cropster): within 90s after FCs, a crash = RoR falls ≥8 F/min from its FC value to below 5 F/min; a flick = RoR first sags ≥5 F/min below its FC value (`FLICK_MIN_SAG`), then climbs back ≥3 F/min off that minimum (`FLICK_MIN_REBOUND`). The sag gate is what keeps a gently wobbling, no-heat-input curve (e.g. FC 11 → 8 → 14) from being mis-flagged as a flick — the rebound alone is not enough. Heuristic thresholds tuned for this machine.
 
+**Maillard deceleration check** (Rao's 2nd rule — "the bean temp shall always decelerate"): `_max_sustained_rise()` walks the Maillard (DRY→FCs) RoR series tracking the gain from the running trough to each later point; the biggest such trough→peak climb is the Maillard rise. `ror_rising` is set when that climb is ≥`DECEL_MIN_RISE` (4 F/min) **and** sustained ≥`DECEL_MIN_DURATION` (40s, past the ~30s RoR window) — so a brief blip or quantization wobble doesn't trip it. A continuously declining curve keeps setting new troughs, so the rise stays ~0. This is distinct from oscillation (wobble, which a monotonic *rising* curve would not register) and from the post-FC flick (a point event). Only computed in phase mode — the fallback (no DRY) can't exclude the drying climb, so `ror_rising` stays False there.
+
 Return dict fields:
 - `oscillations`: total direction changes (maillard + dev only, or full-window if fallback)
 - `maillard_oscillations`, `dev_oscillations`: per-phase counts
 - `severity`: "smooth", "moderate", "oscillating", or "unknown"
 - `heat_correlation`: "low_input" (≤4 heat changes — within target) or "high_input" (≥5)
 - `fc_crash`, `fc_flick`: booleans; `crash_min_ror`: post-FC RoR minimum when crashed
+- `ror_rising`: boolean — Maillard RoR climbed instead of declining (Rao's 2nd rule); `ror_rise`: magnitude of the sustained Maillard climb in F/min
 - `ror_min`, `ror_max`, `ror_mean`: RoR range stats
 - `details`: human-readable summary string
 
@@ -172,6 +175,10 @@ Generated from `fc_crash`/`fc_flick` before the oscillation block:
 - Flick (priority 1): "RoR flicked back upward after first crack… never add heat during FC; plan one cut around 340-345F" — the char/smoky-ashy signature
 - Crash without flick (priority 2): "RoR crashed… carry more momentum into FC, smaller/earlier pre-FC cut"
 
+### Deceleration recommendation (Rao's 2nd rule)
+
+When `ror_rising` is set, `_mechanic_recommendations` emits a priority-2 "RoR Control" rec before the oscillation block: RoR climbed ~X F/min through Maillard instead of declining → heat went in too late → apply more energy early (hotter charge / hold heat through drying) so the RoR peaks just after the turning point and falls into FC; avoid adding heat mid-Maillard. This is separate from the oscillation recs — a monotonic *rising* curve has few direction changes and would otherwise read as "smooth".
+
 ### Context-aware oscillation recommendations
 
 RoR oscillation recs branch on `heat_correlation` from `assess_ror_smoothness()`:
@@ -205,6 +212,7 @@ Each rec is a dict with:
 | Pattern | Action |
 |---------|--------|
 | FC crash or flick | "Plan one heat cut around 340-345F, hold through first crack" |
+| Rising Maillard RoR (`ror_rising`) | "Apply more heat early so RoR peaks after TP and declines" (skipped if a "charge hotter" action is already queued) |
 | Long drying / low TP | "Charge hotter" |
 | RoR oscillating + low_input heat correlation | "Hold heat steady longer between cuts" |
 | RoR oscillating + high_input / too many heat changes | "Plan deliberate heat cuts" |
@@ -237,7 +245,7 @@ Key functions:
 
 **CHARGE data-quality warning**: `display_roast_summary()` surfaces `! CHARGE temperature not recorded - mark CHARGE manually next roast.` when `metrics["charge_bt"]` is 0/missing. This is in addition to the aggregate warnings at the top of the summary box. Does not mutate history — display-time only.
 
-RoR smoothness line shows heat context: `moderate (natural curve variation)` for low-input, `moderate (3 heat changes)` for high-input/unknown.
+RoR smoothness line shows heat context: `moderate (natural curve variation)` for low-input, `moderate (3 heat changes)` for high-input/unknown. When `ror_rising` is set, a follow-up line flags it: `! RoR rising in Maillard (+X F/min) - should decelerate` (Rao's 2nd rule).
 
 ## .alog Technical Details
 

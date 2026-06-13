@@ -15,12 +15,17 @@ from roast_metrics import (
 )
 
 
-def _build_roast(ror_profile, interval=2.0, charge_bt=250.0):
+def _build_roast(ror_profile, interval=2.0, charge_bt=250.0, fc_after_segment=0):
     """Build synthetic roast data from a piecewise RoR profile.
 
     ror_profile: list of (duration_seconds, ror_f_per_min) segments laid
     end to end after a fixed drying ramp. Returns extracted-roast-data
     style dict with timex/bt/timeindex covering CHARGE->DROP.
+
+    fc_after_segment: index of the profile segment whose end marks FC. The
+    default (0) puts FC at the end of the first segment, so everything after
+    is development. Set higher to model a multi-segment Maillard (e.g. a
+    rising RoR into first crack).
     """
     timex = []
     bt = []
@@ -53,8 +58,9 @@ def _build_roast(ror_profile, interval=2.0, charge_bt=250.0):
             t += interval
         boundaries.append(len(timex) - 1)
 
-    # FC at the end of the first profile segment, DROP at the very end
-    fc_idx = boundaries[0] if len(boundaries) > 1 else 0
+    # FC at the end of the chosen profile segment, DROP at the very end.
+    # Need at least one segment after FC to form a development phase.
+    fc_idx = boundaries[fc_after_segment] if len(boundaries) > fc_after_segment + 1 else 0
     drop_idx = len(timex) - 1
     timeindex = [0, dry_idx, fc_idx, 0, 0, 0, drop_idx, 0]
 
@@ -153,6 +159,43 @@ def test_moderate_sag_then_rebound_is_a_flick():
     result = assess_ror_smoothness(data)
     assert result["fc_crash"] is False
     assert result["fc_flick"] is True
+
+
+def test_declining_maillard_is_not_rising():
+    """A steady/declining Maillard RoR satisfies Rao's 2nd rule (no flag)."""
+    # Maillard = first three segments (15->12->10, declining), FC after the
+    # third, then development.
+    data = _build_roast(
+        [(80, 15.0), (80, 12.0), (80, 10.0), (60, 8.0)], fc_after_segment=2
+    )
+    result = assess_ror_smoothness(data)
+    assert result["ror_rising"] is False
+    assert result["ror_rise"] < 4.0
+
+
+def test_rising_maillard_flags_deceleration_violation():
+    """A Maillard RoR that climbs into FC violates the ever-decelerating rule.
+
+    8 -> 11 -> 15 over the Maillard segments is a sustained ~7 F/min climb,
+    not oscillation — heat went in too late. Should set ror_rising."""
+    data = _build_roast(
+        [(80, 8.0), (80, 11.0), (80, 15.0), (60, 11.0)], fc_after_segment=2
+    )
+    result = assess_ror_smoothness(data)
+    assert result["ror_rising"] is True
+    assert result["ror_rise"] >= 4.0
+
+
+def test_brief_maillard_bump_is_not_rising():
+    """A short dip-and-recover inside an otherwise declining Maillard is noise,
+    not a deceleration violation (duration below DECEL_MIN_DURATION)."""
+    # Mostly declining (16->14->6) with one tiny 14->15 nudge that doesn't
+    # sustain — net curve still decelerates.
+    data = _build_roast(
+        [(120, 16.0), (20, 15.0), (120, 6.0), (60, 5.0)], fc_after_segment=2
+    )
+    result = assess_ror_smoothness(data)
+    assert result["ror_rising"] is False
 
 
 def test_window_adapts_to_sampling_interval():

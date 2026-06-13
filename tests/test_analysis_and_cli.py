@@ -72,6 +72,24 @@ def test_flick_rec_outranks_oscillation():
     assert flick_recs and flick_recs[0]["priority"] == 1
 
 
+def test_rising_maillard_ror_recommends_earlier_energy():
+    """Rao's 2nd rule: a rising Maillard RoR yields a deceleration rec and a
+    next-roast action about getting heat in earlier."""
+    metrics = _metrics_with({
+        "ror_smoothness": {
+            "severity": "smooth", "oscillations": 1,
+            "heat_correlation": "low_input",
+            "ror_rising": True, "ror_rise": 7.0,
+        },
+    })
+    comps = compare_to_targets(metrics)
+    recs = generate_recommendations(comps, metrics)
+    decel = [r for r in recs if "maillard" in r["text"].lower() and "declin" in r["text"].lower()]
+    assert decel and decel[0]["category"] == "RoR Control"
+    actions = generate_next_roast_summary(comps, metrics, recs)
+    assert any("turning point" in a.lower() for a in actions)
+
+
 def test_weight_loss_on_target_yields_no_rec():
     """A roast inside the weight-loss band produces no development rec."""
     metrics = _metrics_with({"weight_loss_pct": 15.0})

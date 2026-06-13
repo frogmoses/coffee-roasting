@@ -90,6 +90,8 @@ If you don't specify an ID, the command uses the latest roast.
 
 **Weight loss**: if you entered the post-roast weight in Artisan, the summary shows roast loss (`226g -> 192g (15.0% loss)`) and the target comparison flags whether it's in band. It's a diagnostic readout of development, not a separate lever — recommendations frame any miss as a change to time after first crack.
 
+**RoR smoothness**: the summary rates the rate-of-rise curve (smooth / moderate / oscillating) with heat context. If the RoR *climbs* through Maillard instead of falling — a violation of Rao's rule that the bean temp should always decelerate — a line flags it (`! RoR rising in Maillard (+X F/min) - should decelerate`) and the recommendations tell you to get more heat in earlier so the curve peaks just after the turning point and declines into first crack.
+
 **CHARGE warning**: if `charge_bt` wasn't recorded (missed/late CHARGE press), a warning line appears in the summary so you know to mark CHARGE manually next roast.
 
 **Next Roast** box gives 2-4 concrete action items distilled from the analysis (e.g., "Charge hotter", "Hold heat steady longer between cuts").

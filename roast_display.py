@@ -171,6 +171,9 @@ def display_roast_summary(analysis):
         else:
             context = f"({heat_count} heat changes)"
         lines.append(_box_row(f"  RoR smoothness: {ror_info['severity']} {context}", "", w))
+        # Rao's 2nd rule: a rising Maillard RoR means the curve isn't decelerating
+        if ror_info.get("ror_rising"):
+            lines.append(_box_row(f"  ! RoR rising in Maillard (+{ror_info.get('ror_rise', 0)} F/min) - should decelerate", "", w))
 
     # Visual development (from sentinel camera system)
     visual_scores = m.get("visual_development_scores", [])
