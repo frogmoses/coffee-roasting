@@ -315,7 +315,32 @@ def display_target_comparison(comparisons, metrics=None):
         "dev_phase_pct": ("dev_phase_time", "dev_phase_ror"),
     }
 
-    for comp in comparisons:
+    # Display in roast-timeline order rather than the worst-deviation-first
+    # sort the comparisons arrive in: the three phases as a block (drying ->
+    # maillard -> development), then the remaining metrics in the order they
+    # occur through the roast. The Status column still flags any problems, so
+    # a stable chronological layout doesn't hide them. Keys not listed (e.g.
+    # a custom targets.json metric) fall to the end in their original order.
+    display_order = [
+        "dry_phase_pct",     # Drying phase
+        "mid_phase_pct",     # Maillard phase
+        "dev_phase_pct",     # Development phase
+        "tp_bt",             # Turning point (earliest event)
+        "fc_bt",             # First crack
+        "ror_at_fc",         # RoR at first crack
+        "dev_phase_time",    # Time from FC to drop
+        "drop_bt",           # Drop
+        "total_time",        # Whole roast
+        "weight_loss_pct",   # Post-roast outcome
+        "heat_adjustments",  # Throughout — count, not an event
+    ]
+    order_index = {key: i for i, key in enumerate(display_order)}
+    ordered = sorted(
+        comparisons,
+        key=lambda c: order_index.get(c.get("metric"), len(display_order)),
+    )
+
+    for comp in ordered:
         status = comp["status"]
         # Add visual indicator
         if status == "OK":
