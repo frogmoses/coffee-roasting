@@ -28,7 +28,7 @@ run_roast-analyzer analyze.py <command>
 coffee-roasting/
 ├── analyze.py              # CLI entry point (argparse dispatch)
 ├── roast_parser.py         # .alog file parsing via ast.literal_eval()
-├── roast_metrics.py        # Metric extraction, target definitions, comparison, RoR analysis
+├── roast_metrics.py        # Metric extraction, RoR analysis, SAFETY_EJECT_BT (no target bands)
 ├── roast_analysis.py       # Analysis orchestration + roast comparison (recs delegated to LLM)
 ├── roast_narrative.py      # CHARGE->DROP control-timeline reconstruction (heater/fan moves)
 ├── llm_recommender.py      # LLM recommender: prompt assembly + claude-opus-4-8 structured call
@@ -36,7 +36,6 @@ coffee-roasting/
 ├── roast_display.py        # Terminal formatting with Unicode box-drawing
 ├── coffee_lookup.py        # find-coffee API client with auto server lifecycle
 ├── sentinel_loader.py      # Sentinel JSON loading, UUID/date matching, visual extraction
-├── targets.json            # Optional per-key target overrides (active for current regime)
 ├── .env.example            # Secret/env-var template (incl. ANTHROPIC_API_KEY); never commit .env
 ├── tests/                  # pytest suite (run: uv run pytest tests/)
 ├── pyproject.toml          # Package config (requires-python >=3.10, deps: requests, anthropic; dev: pytest)
@@ -56,11 +55,11 @@ Dispatch table at the bottom of `analyze.py`. Each command maps to a `cmd_*` fun
 
 | Command | Function | Key flow |
 |---------|----------|----------|
-| `full` | `cmd_full()` `:298` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_target_comparison()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
+| `full` | `cmd_full()` `:298` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
 | `scan` | `cmd_scan()` `:107` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `enrich_trajectory_with_temps()` -> `analyze_roast()` -> `save_history()` |
 | `show` | `cmd_show()` `:203` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
 | `compare` | `cmd_compare()` `:221` | `compare_roasts()` -> `display_roast_comparison()` |
-| `recommend` | `cmd_recommend()` `:254` | `display_target_comparison()` -> `display_recommendations()` -> `display_next_roast()` (recs + `next_roast` read from cached history) |
+| `recommend` | `cmd_recommend()` `:254` | `display_recommendations()` -> `display_next_roast()` (recs + `next_roast` read from cached history) |
 | `cupping` | `cmd_cupping()` `:276` | Read/write `cupping_notes` in history |
 | `list` | `cmd_list()` `:343` | `get_sorted_analyses()` -> `display_roast_list()` |
 | `bean` | `cmd_bean()` `:350` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
@@ -84,48 +83,56 @@ Scan behaviors:
   -> roast_parser.extract_roast_data()   # pull fields, decode events
   -> roast_metrics.extract_metrics()     # calculate phase %, temps, RoR, heat changes
   -> roast_metrics.add_visual_metrics()  # merge sentinel data if available
-  -> roast_metrics.compare_to_targets()  # compare against TARGETS dict
   -> roast_narrative.build_control_timeline() # reconstruct heater/fan moves
   -> llm_recommender.generate_llm_recommendations()  # claude-opus-4-8 -> recs + next_roast
   -> roast_display.*                     # Unicode box-drawing output
   -> roast_history.json                  # persisted to disk (recs + next_roast cached)
 ```
 
-Recommendations and the next-roast actions are produced by the LLM recommender
-**once at scan time** and cached in `roast_history.json`. The `recommend`/`full`
-commands display the cached output; `scan --force` regenerates it. If the API
-key or network is unavailable the recommender fails soft — metrics and target
-comparisons are still saved, recommendations are just empty (the scan log prints
-the reason via `llm_status`).
+There is no target-comparison step — numeric target bands were removed (see
+"No Target Bands" below). Recommendations and next-roast actions are produced by
+the LLM recommender **once at scan time** and cached in `roast_history.json`.
+The `recommend`/`full` commands display the cached output; `scan --force`
+regenerates it. If the API key or network is unavailable the recommender fails
+soft — the metrics are still saved, recommendations are just empty (the scan log
+prints the reason via `llm_status`).
 
 Parallel enrichment during scan:
 - `coffee_lookup.lookup_bean()` — queries find-coffee API for bean profile
 - `sentinel_loader.match_sentinel_to_roast()` — finds visual data by UUID (deterministic) or date/time (fallback)
 - `sentinel_loader.enrich_trajectory_with_temps()` — adds BT/ET from .alog to each visual trajectory point
 
-## Target Constants
+## No Target Bands
 
-Defined in `roast_metrics.py` as `DEFAULT_TARGETS`; the active `TARGETS` dict merges optional per-key overrides from `targets.json` in the project root (no code change needed to recalibrate). The table below is the *code defaults*, originally calibrated for a light-medium washed-African regime (hot charge, manual mode, ~300F charge, drop timed from FC) using roast history + theory (Hottop manual safety/FC points, Rao/Cropster RoR guidance, RoastRebels washed-African DTR). The live `targets.json` currently overrides several of these for the **Bolivia Caranavi peaberry, City–Full City+, espresso-leaning** regime now being roasted — see the override note under the table.
+There are **no numeric target bands**. The previous `DEFAULT_TARGETS`/`TARGETS`
+dict, the `targets.json` override file, and `compare_to_targets()` were removed.
+Judging a roast against fixed phase-percentage / time / temperature ranges was
+abandoned because the roaster has not yet dialed in a bean — those bands were
+unvalidated theory-plus-limited-history guesses presented as ground truth, so a
+deviation got stamped `!! HIGH`/`!! LOW` against a number that had no empirical
+backing.
 
-| Metric | Target | Tolerance/Range | Key |
-|--------|--------|-----------------|-----|
-| Drying phase | 50% | +/- 5% | `dry_phase_pct` |
-| Maillard phase | 32% | +/- 4% | `mid_phase_pct` |
-| Development phase | 17% | +/- 3% | `dev_phase_pct` |
-| Dev time after FC | 90-125s | range | `dev_phase_time` |
-| Total time | 690s (11:30) | +/- 40s | `total_time` |
-| Turning point BT | 150-170F | range | `tp_bt` |
-| First crack BT | 356-366F | range | `fc_bt` |
-| Drop BT | 374-388F | range (diagnostic) | `drop_bt` |
-| RoR at FC | 14-18 F/min | range | `ror_at_fc` |
-| Heat adjustments | max 4 | hard max | `heat_adjustments` |
-| Weight loss | 13-16% | range (diagnostic) | `weight_loss_pct` |
+What replaces them:
+- **Theory** (bean-agnostic, reliable regardless of any target): RoR shape
+  (smooth decline, ever-decelerating bean temp per Rao, no crash/flick), phase
+  balance, and the fact that drop temp and weight loss are *outcomes* of
+  development time. This still lives in `roast_metrics.assess_ror_smoothness()`
+  and in the LLM system prompt.
+- **Flavor**: the bean's intended flavor profile (find-coffee) vs how it
+  actually cupped (the roaster's own cupping notes). This is the real signal —
+  the gap between intended and actual taste.
+- The metrics themselves (phase %, times, temps, RoR) are still extracted and
+  shown as **facts** (in `display_roast_summary`), just not compared to bands.
 
-**Active `targets.json` overrides** (current Bolivia / City–Full City+ espresso regime — darker drop, longer/even development than the washed-African defaults): `total_time` 740s ±45, `dev_phase_time` 140-165s, `dev_phase_pct` 19% ±2, `tp_bt` 160-180F, `ror_at_fc` 12-16 F/min, `fc_bt` 356-368F, `drop_bt` 385-403F. Non-overridden keys (`dry_phase_pct`, `mid_phase_pct`, `heat_adjustments`, `weight_loss_pct`) keep the defaults above. Note `drop_bt` now tops out (403F) above `SAFETY_EJECT_BT` (395F) — the user intentionally drops Full City+ for espresso; the 395F constant is unchanged, so deliberate dark drops no longer trip the diagnostic but the safety constant still governs the safety note logic.
+**Path to grounded targets (future):** once the roaster has a roast they love,
+*that* roast's curve becomes the reference ("match the one that tasted great"),
+replacing theory guesses. Not yet implemented — would touch the cupping workflow
+and history schema.
 
-`dev_phase_time` (seconds FC→DROP, Artisan's `finishphasetime`) is the actionable development lever; `drop_bt` and `weight_loss_pct` are treated as *outcomes* of dev time, not steering targets — the LLM recommender is instructed to translate their misses into time-after-FC adjustments. Note `TARGETS` is no longer the recommendation *judge*: it is passed to the LLM as guidance (`llm_recommender._targets_block()`) alongside the comparison table, and `compare_to_targets()` still drives the on-screen target comparison. `weight_loss_pct` (roast/organic loss) is only compared when weight-out was entered (it's 0/skipped otherwise — see the extraction note below). `SAFETY_EJECT_BT = 395` (Hottop hard safety point; the machine also alerts at 356F = FC imminent).
-
-Comparison status values: `"OK"`, `"!! HIGH"`, `"!! LOW"`. Metrics with value <= 0 (event not recorded; Artisan uses 0/-1) are skipped instead of flagged LOW — except `heat_adjustments`, where 0 is real. Seconds-based range targets display as M:SS.
+`SAFETY_EJECT_BT = 408` in `roast_metrics.py` is the one fixed reference kept —
+a physical safety ceiling, not a taste target. The Hottop manual's 395F figure
+is wrong; 408F is the real ejection point on this machine. (The BT display also
+alerts at 356F = FC imminent.) Metrics of 0/-1 still mean "event not recorded".
 
 ## RoR Smoothness Analysis (`roast_metrics.py`)
 
@@ -151,7 +158,7 @@ Return dict fields:
 - `oscillations`: total direction changes (maillard + dev only, or full-window if fallback)
 - `maillard_oscillations`, `dev_oscillations`: per-phase counts
 - `severity`: "smooth", "moderate", "oscillating", or "unknown"
-- `heat_correlation`: "low_input" (≤4 heat changes — within target) or "high_input" (≥5)
+- `heat_correlation`: "low_input" (≤4 heat changes) or "high_input" (≥5)
 - `fc_crash`, `fc_flick`: booleans; `crash_min_ror`: post-FC RoR minimum when crashed
 - `ror_rising`: boolean — Maillard RoR climbed instead of declining (Rao's 2nd rule); `ror_rise`: magnitude of the sustained Maillard climb in F/min
 - `ror_min`, `ror_max`, `ror_mean`: RoR range stats
@@ -169,16 +176,17 @@ moves) and reduced it to a single `heat_adjustments` integer.
 
 ### Flow
 
-`roast_analysis.analyze_roast()` `:34` builds metrics + comparisons, then calls
-`llm_recommender.generate_llm_recommendations(metrics, comparisons, data, bean_profile)`
-`llm_recommender.py:234`. That function:
+`roast_analysis.analyze_roast()` `:16` builds metrics, then calls
+`llm_recommender.generate_llm_recommendations(metrics, data, bean_profile)`
+`llm_recommender.py:215`. That function:
 
 1. Reconstructs the CHARGE->DROP control timeline from `data` via
    `roast_narrative.build_control_timeline()` / `format_narrative()`.
-2. Assembles the prompt: targets-as-guidance, the target comparison table, a
-   curated metrics dict (incl. `ror_diagnostics` from `ror_smoothness`), the
-   control timeline, bean profile, visual development, and the operator's own
-   cupping notes.
+2. Assembles the prompt: a curated metrics dict shown as *facts* (incl.
+   `ror_diagnostics` from `ror_smoothness`), the control timeline, the bean's
+   intended flavor profile, visual development, and the operator's own cupping
+   notes. **No target bands** — the prompt explicitly tells the model there are
+   no fixed numeric targets and to judge by theory + flavor instead.
 3. Calls `claude-opus-4-8` with **structured output** (`output_config.format`
    with `_OUTPUT_SCHEMA`, effort `high`, adaptive thinking, non-streaming).
 4. Returns `({"recommendations": [...], "next_roast": [...]}, status)` or
@@ -194,13 +202,15 @@ model is instructed to emit the same rec shape it already consumed.
   (heater %, fan %, timing of cuts relative to BT and FC). Name the dial and the
   moment ("ease the heater to ~80% by 250F BT"); don't say "charge hotter" when
   the timeline shows the heater was already maxed.
-- Targets are guidance for this bean/regime, not gospel — reason from roasting
-  theory (declining RoR, ever-decelerating bean temp, phase balance) and the
-  bean's intended flavor. Drop temp and weight loss are *outcomes* of dev time;
-  translate misses into time-after-FC or heat-timing changes.
+- There are no fixed numeric targets; judge two ways — (1) flavor: the bean's
+  intended profile vs how it actually cupped, and (2) bean-agnostic theory
+  (declining RoR, ever-decelerating bean temp, no crash/flick, phase balance).
+  Drop temp and weight loss are *outcomes* of dev time; translate into
+  time-after-FC or heat-timing changes. A metric value may be cited as a fact,
+  not as conformance to a band.
 - `hottop_reference.py:HOTTOP_CONTROLS` is prepended as machine background
   (heater/fan/drum/damper behavior, 340-345F cut point, 356F FC indicator,
-  395F safety eject).
+  408F safety eject).
 
 ### Output contract (`_OUTPUT_SCHEMA`)
 
@@ -226,7 +236,7 @@ input the old engine threw away.
 `generate_llm_recommendations()` returns `(None, status)` — never raises into the
 scan — for: anthropic SDK not installed, no API credentials, API/network error,
 model refusal, or unparseable output. `cmd_scan` prints the non-"ok" status as
-`!! recommendations skipped: <reason>`. Metrics and comparisons are still saved.
+`!! recommendations skipped: <reason>`. The metrics are still saved.
 
 ## Display Layer (`roast_display.py`)
 
@@ -236,10 +246,9 @@ Key functions:
 - `_visual_summary()` `:55` — one-line trajectory interpretation (steady/stalled/rapid jump)
 - `display_roast_summary()` `:95` — temps (+ CHARGE warning if `charge_bt` is missing), phases with time+RoR annotation, RoR, phase-grouped visual scores, cupping notes. The weight line shows `in -> out (X% loss)` once `weight_out` is entered, otherwise just `in`.
 - `display_bean_profile()` — cupping notes, flavor bars, cupping chart scores
-- `display_target_comparison(comparisons, metrics=None)` — metric vs target table. When `metrics` is passed, phase rows (dry/mid/dev) get a `-> mm:ss at X F/min` sub-line so the headline percentage isn't the only signal (dry_phase_pct is a ratio and hides whether a miss is from phase duration or total-time denominator). Callers in `analyze.py` pass `analysis["metrics"]`.
 - `display_recommendations()` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
 - `display_next_roast()` — numbered action items
-- `display_roast_comparison()` — side-by-side delta table with improved/regressed
+- `display_roast_comparison()` — side-by-side delta table; direction is descriptive only (increased/decreased/unchanged), since with no target there's no "better/worse" verdict
 - `display_trend()` — all roasts in a compact metric table
 - `display_roast_list()` — batch #, date, title, time, drop temp
 
@@ -446,7 +455,6 @@ anymore. `detect_plateau()` is still used display-side by `_visual_summary()`.
 `roast_history.json` (gitignored) — keyed by roast ID. Each entry contains:
 - `roast_id`, `title`, `roast_date`, `batch_nr`
 - `metrics` dict (all extracted metrics)
-- `comparisons` list (target comparison results)
 - `recommendations` list (LLM-generated recs; empty if the LLM was unavailable)
 - `next_roast` list (2-4 LLM-generated action strings)
 - `llm_status` string (`"ok"` or the reason recs were skipped)

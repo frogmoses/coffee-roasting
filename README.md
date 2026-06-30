@@ -1,6 +1,6 @@
 # Coffee Roasting with Hottop KN-8828B-2K+
 
-Roast analysis tool for the Hottop KN-8828B-2K+ connected to Artisan. Analyzes `.alog` roast logs, looks up bean profiles, compares metrics against targets, and gives you actionable recommendations for the next roast.
+Roast analysis tool for the Hottop KN-8828B-2K+ connected to Artisan. Analyzes `.alog` roast logs, looks up bean profiles, and gives you actionable recommendations for the next roast — reasoning from roasting theory and how the bean cupped, not from fixed target curves.
 
 ## After a Roast
 
@@ -10,7 +10,7 @@ Artisan logs auto-sync from the roaster to `roast-logs/` via inotifywait + rsync
 run_roast-analyzer analyze.py full
 ```
 
-This scans for new log files, shows a summary of the latest roast, compares it to targets, prints recommendations with a priority legend, and ends with a **Next Roast** box telling you exactly what to change.
+This scans for new log files, shows a summary of the latest roast, prints recommendations with a priority legend, and ends with a **Next Roast** box telling you exactly what to change.
 
 > **Tip:** Enter the post-roast weight (weight-out) in Artisan before saving. When it's present, the report adds roast-loss analysis — see [Understanding Your Output](#understanding-your-output).
 
@@ -37,7 +37,7 @@ Integrations (configured via env vars in the wrapper script):
 | `FIND_COFFEE_WRAPPER` | Path to `run_find-coffee` script (auto-starts the server if needed) |
 | `SENTINEL_CAPTURES_DIRS` | Colon-separated paths to r1-eye/GoPro capture directories for visual scoring |
 
-Without `ANTHROPIC_API_KEY`, scans still record metrics and the target comparison, but skip recommendations (the scan prints why). The find-coffee and sentinel vars are optional — those features are silently skipped when unset.
+Without `ANTHROPIC_API_KEY`, scans still record the roast metrics, but skip recommendations (the scan prints why). The find-coffee and sentinel vars are optional — those features are silently skipped when unset.
 
 ## Commands
 
@@ -47,7 +47,7 @@ Every command is run as `run_roast-analyzer analyze.py <command>`. Most accept a
 
 | Command | What it does |
 |---------|-------------|
-| `full [id]` | Scan + full report (summary, bean profile, targets, recommendations, next roast, trend) |
+| `full [id]` | Scan + full report (summary, bean profile, recommendations, next roast, trend) |
 | `full [id] -v` | Same, with full professional cupping notes |
 | `show [id]` | Roast summary only (temps, times, phases, RoR, weight) |
 
@@ -56,7 +56,7 @@ Every command is run as `run_roast-analyzer analyze.py <command>`. Most accept a
 | Command | What it does |
 |---------|-------------|
 | `scan` / `scan --force` | Ingest new `.alog` files (or re-analyze everything from scratch) |
-| `recommend [id] [-v]` | Target comparison + recommendations + next-roast actions |
+| `recommend [id] [-v]` | Recommendations + next-roast actions |
 | `compare [id1 id2]` | Side-by-side comparison of two roasts |
 | `list` | All analyzed roasts with batch number, date, bean, metrics |
 
@@ -87,9 +87,9 @@ If you don't specify an ID, the command uses the latest roast.
 - `[ ! ]` — worth improving
 - `[   ]` — info
 
-**Phase Breakdown** and **Target Comparison** show each phase's raw time and RoR next to the percentage — e.g. `Drying: 61.6% (8:30 @ 26.8 F/min)` — so you can tell whether a high drying % is coming from a long phase or a short total time.
+**Phase Breakdown** in the summary shows each phase's raw time and RoR next to the percentage — e.g. `Drying: 61.6% (8:30 @ 26.8 F/min)` — so you can tell whether a high drying % is coming from a long phase or a short total time.
 
-**Weight loss**: if you entered the post-roast weight in Artisan, the summary shows roast loss (`226g -> 192g (15.0% loss)`) and the target comparison flags whether it's in band. It's a diagnostic readout of development, not a separate lever — recommendations frame any miss as a change to time after first crack.
+**Weight loss**: if you entered the post-roast weight in Artisan, the summary shows roast loss (`226g -> 192g (15.0% loss)`). It's a readout of development — an outcome of time after first crack — not a lever you steer directly.
 
 **RoR smoothness**: the summary rates the rate-of-rise curve (smooth / moderate / oscillating) with heat context. If the RoR *climbs* through Maillard instead of falling — a violation of Rao's rule that the bean temp should always decelerate — a line flags it (`! RoR rising in Maillard (+X F/min) - should decelerate`) and the recommendations typically steer you to get more heat in earlier so the curve peaks just after the turning point and declines into first crack.
 
@@ -99,39 +99,16 @@ If you don't specify an ID, the command uses the latest roast.
 
 **Trend** table shows key metrics across all roasts so you can see progress.
 
-## Configuration
+## How It Judges a Roast
 
-### Targets
+There are **no fixed numeric targets** — no "your drying should be 50%" bands. Until you've roasted a bean you genuinely like, any target curve would be an unvalidated guess. Instead the analysis reasons from two things:
 
-Every metric is compared against a target band. The defaults are calibrated for a light-medium washed coffee on the hot-charge regime, but you can override any of them — **no code change** — by creating `targets.json` in the project root. List only the metrics you want to change; everything else keeps its default.
+1. **Flavor** — what the bean is *supposed* to taste like (from the bean profile) versus how it *actually* cupped (your tasting notes). Add your notes with `cupping <id> -n "..."` so the next analysis can use them.
+2. **Roasting theory** — things that hold regardless of the bean: a smoothly declining rate of rise, an ever-decelerating bean temp, no crash or flick into first crack, and a sensible balance of drying / Maillard / development. Drop temp and weight loss are treated as *outcomes* of development time, not goals to hit.
 
-Targets come in three shapes. Match the shape of the metric you're overriding:
+The raw numbers (phase times, temperatures, RoR) are still shown as facts in the summary — they're just not graded against a band. The one fixed reference is the **408°F safety eject** (the Hottop manual's 395°F figure is wrong).
 
-| Shape | Metrics | Fields to set |
-|-------|---------|---------------|
-| Range | `dev_phase_time`, `tp_bt`, `fc_bt`, `drop_bt`, `ror_at_fc`, `weight_loss_pct` | `min`, `max` |
-| Target ± tolerance | `dry_phase_pct`, `mid_phase_pct`, `dev_phase_pct`, `total_time` | `target`, `tolerance` |
-| Hard max | `heat_adjustments` | `max` |
-
-Times are in **seconds** (`690` = 11:30); temperatures in °F.
-
-Example `targets.json`:
-
-```json
-{
-  "total_time": {"target": 740, "tolerance": 45},
-  "dev_phase_time": {"min": 140, "max": 165},
-  "drop_bt": {"min": 385, "max": 400}
-}
-```
-
-After editing, re-scan so existing roasts are recompared against the new bands:
-
-```bash
-run_roast-analyzer analyze.py scan --force
-```
-
-A malformed `targets.json` silently falls back to the defaults, so if a change doesn't take effect, check the JSON.
+> Down the road, once you have a roast you love, the plan is to make *that* roast's curve the reference — "match the one that tasted great" — instead of theory guesses.
 
 ## Visual Data
 

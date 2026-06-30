@@ -1,78 +1,20 @@
-"""Metric extraction, target definitions, and comparison for coffee roasts.
+"""Metric extraction and RoR analysis for coffee roasts.
 
-Compares actual roast metrics against ideal targets calibrated for the
-hot-charge regime on the Hottop KN-8828B-2K+ (manual mode, ~300F charge,
-drop timed from first crack) using roast history plus roasting theory.
+Extracts the facts of a roast (phase times/percentages, key temperatures,
+rate-of-rise shape, weight loss) for the Hottop KN-8828B-2K+ (manual mode,
+~300F charge, drop timed from first crack). There are no numeric "target
+bands" — judging a roast against unvalidated target ranges was removed in
+favor of reasoning from roasting theory and the bean's intended flavor
+(see llm_recommender.py). The only fixed reference kept here is the machine
+safety point below.
 """
 
-import json
-from pathlib import Path
 from statistics import mean
 
-# Default targets for a fruit-forward light-medium roast on the Hottop
-# KN-8828B-2K+ under the hot-charge regime. Calibration sources:
-# - Hottop manual: BT display flags FC as imminent at 356F; the machine
-#   safety-ejects at 356F and 395F BT; recommended heat cut at 340-345F
-# - Rao/Cropster: smoothly declining RoR, no crash/flick through FC;
-#   DTR 20-25% canonical, 16-20% typical for washed-African light roasts
-# - Roast history: hot charge puts TP at ~156-167F and drying (CHARGE to
-#   Artisan's auto-DRY mark at 300F BT) at ~50-57% of total time
-# Any value can be overridden via targets.json in the project root.
-DEFAULT_TARGETS = {
-    "dry_phase_pct": {"target": 50.0, "tolerance": 5.0, "unit": "%", "label": "Drying phase"},
-    "mid_phase_pct": {"target": 32.0, "tolerance": 4.0, "unit": "%", "label": "Maillard phase"},
-    "dev_phase_pct": {"target": 17.0, "tolerance": 3.0, "unit": "%", "label": "Development phase"},
-    # The actionable development lever under the new regime: seconds from
-    # first crack to drop (dev_phase_pct is the diagnostic ratio view)
-    "dev_phase_time": {"min": 90, "max": 125, "unit": "s", "label": "Dev time after FC"},
-    "total_time": {"target": 690, "tolerance": 40, "unit": "s", "label": "Total time"},
-    # Hot charge (~300F panel/ET) lands the BT turning point around 150-170F
-    "tp_bt": {"min": 150, "max": 170, "unit": "F", "label": "Turning point BT"},
-    # Hottop's own FC indicator: BT display turns brown at 356F
-    "fc_bt": {"min": 356, "max": 366, "unit": "F", "label": "First crack BT"},
-    # Diagnostic, not a steering target — drop is timed from FC, so drop BT
-    # is an outcome of dev time. Hottop safety-ejects at 395F BT.
-    "drop_bt": {"min": 374, "max": 388, "unit": "F", "label": "Drop BT"},
-    # Enough momentum through FC to avoid an RoR crash, without flicking
-    "ror_at_fc": {"min": 14, "max": 18, "unit": "F/min", "label": "RoR at FC"},
-    "heat_adjustments": {"max": 4, "unit": "count", "label": "Heat adjustments"},
-    # Roast (organic) loss — moisture plus pyrolysis off-gassing. A measurable
-    # outcome of development, not a steering lever (like drop_bt). Washed
-    # light-medium loses ~13-16%; below drops underdeveloped, above darker than
-    # the fruit-forward target. Only compared when weight-out was entered.
-    "weight_loss_pct": {"min": 13.0, "max": 16.0, "unit": "%", "label": "Weight loss"},
-}
-
-# Hottop hard safety point — the machine ejects beans at this BT unless
-# the ENTER button is pressed. Recommendations should keep clear of it.
-SAFETY_EJECT_BT = 395
-
-
-def _load_targets():
-    """Build the active targets dict: defaults merged with targets.json.
-
-    targets.json (optional, project root) lets the user recalibrate
-    without code changes, e.g. {"dev_phase_time": {"min": 100, "max": 130}}.
-    Unknown keys are added as new targets; bad JSON falls back to defaults.
-    """
-    targets = {k: dict(v) for k, v in DEFAULT_TARGETS.items()}
-    override_path = Path(__file__).parent / "targets.json"
-    if override_path.exists():
-        try:
-            overrides = json.loads(override_path.read_text())
-            for key, fields in overrides.items():
-                if not isinstance(fields, dict):
-                    continue
-                if key in targets:
-                    targets[key].update(fields)
-                else:
-                    targets[key] = fields
-        except (ValueError, OSError):
-            pass  # unreadable override file — keep defaults
-    return targets
-
-
-TARGETS = _load_targets()
+# Hottop hard safety point — the machine ejects beans at this BT unless the
+# ENTER button is held. Empirically 408F on this machine (the manual's 395F
+# figure is wrong). Not a taste target — a physical safety ceiling.
+SAFETY_EJECT_BT = 408
 
 
 def get_phase_percentages(computed):
@@ -527,124 +469,6 @@ def add_visual_metrics(metrics, visual_data):
     metrics["visual_final_color"] = visual_data.get("final_color", "")
 
     return metrics
-
-
-def compare_to_targets(metrics):
-    """Compare extracted metrics against ideal targets.
-
-    Args:
-        metrics: Dict from extract_metrics().
-
-    Returns:
-        List of comparison dicts sorted by severity (worst first).
-        Each dict has: metric, label, actual, target_str, status, deviation.
-    """
-    comparisons = []
-
-    for key, target in TARGETS.items():
-        actual = metrics.get(key, None)
-        if actual is None:
-            continue
-
-        # Temps/times of 0 or -1 mean the event wasn't recorded; comparing
-        # them produces noise like "FC 0F !! LOW". heat_adjustments is the
-        # only metric where 0 is a real value.
-        if key != "heat_adjustments" and actual <= 0:
-            continue
-
-        if "target" in target and "tolerance" in target:
-            # Target with tolerance (e.g., phase percentages)
-            t = target["target"]
-            tol = target["tolerance"]
-            deviation = actual - t
-
-            if abs(deviation) <= tol:
-                status = "OK"
-            elif deviation > 0:
-                status = "!! HIGH"
-            else:
-                status = "!! LOW"
-
-            # Format target string
-            if key == "total_time":
-                target_str = f"{_fmt_time(t)} +/- {int(tol)}s"
-                actual_display = _fmt_time(actual)
-            else:
-                target_str = f"{t}{target['unit']} +/- {tol}"
-                actual_display = f"{actual}{target['unit']}"
-
-            comparisons.append({
-                "metric": key,
-                "label": target["label"],
-                "actual": actual,
-                "actual_display": actual_display,
-                "target_str": target_str,
-                "status": status,
-                "deviation": abs(deviation),
-                "deviation_display": f"{deviation:+.1f}{target['unit']}",
-            })
-
-        elif "min" in target and "max" in target:
-            # Range target (e.g., FC temperature)
-            tmin = target["min"]
-            tmax = target["max"]
-
-            if tmin <= actual <= tmax:
-                status = "OK"
-                deviation = 0
-            elif actual < tmin:
-                status = "!! LOW"
-                deviation = tmin - actual
-            else:
-                status = "!! HIGH"
-                deviation = actual - tmax
-
-            # Seconds-based range targets read better as M:SS
-            if target["unit"] == "s":
-                target_str = f"{_fmt_time(tmin)}-{_fmt_time(tmax)}"
-                actual_display = _fmt_time(actual)
-            else:
-                target_str = f"{tmin}-{tmax}{target['unit']}"
-                actual_display = f"{actual}{target['unit']}"
-
-            comparisons.append({
-                "metric": key,
-                "label": target["label"],
-                "actual": actual,
-                "actual_display": actual_display,
-                "target_str": target_str,
-                "status": status,
-                "deviation": deviation,
-                "deviation_display": f"{deviation:+.1f}{target['unit']}" if deviation else "on target",
-            })
-
-        elif "max" in target:
-            # Hard max limit (e.g., heat adjustments)
-            tmax = target["max"]
-            deviation = max(0, actual - tmax)
-
-            if actual <= tmax:
-                status = "OK"
-            else:
-                status = "!! HIGH"
-
-            target_str = f"max {tmax}"
-            actual_display = str(actual)
-
-            comparisons.append({
-                "metric": key,
-                "label": target["label"],
-                "actual": actual,
-                "actual_display": actual_display,
-                "target_str": target_str,
-                "status": status,
-                "deviation": deviation,
-                "deviation_display": f"+{deviation}" if deviation else "OK",
-            })
-
-    # Sort: problems first (by deviation), then OK items
-    comparisons.sort(key=lambda c: (0 if c["status"] != "OK" else 1, -c["deviation"]))
-    return comparisons
 
 
 def _fmt_time(seconds):

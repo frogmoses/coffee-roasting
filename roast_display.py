@@ -285,88 +285,6 @@ def display_bean_profile(bean_profile):
     return "\n".join(lines)
 
 
-def display_target_comparison(comparisons, metrics=None):
-    """Display a table comparing metrics against targets.
-
-    Args:
-        comparisons: From roast_metrics.compare_to_targets().
-        metrics: Optional metrics dict. When provided, phase rows get a
-            second-line annotation showing raw time and RoR so the user can
-            see whether a percentage miss reflects long phase duration or
-            short total time.
-
-    Returns:
-        Formatted string.
-    """
-    if not comparisons:
-        return "No comparisons available."
-
-    lines = []
-    w = 72
-
-    lines.append(_box_header("Target Comparison", w))
-
-    # Table header
-    hdr = f"  {'Metric':<20} {'Actual':>10} {'Target':>16} {'Status':>10}"
-    lines.append(_box_row(hdr, "", w))
-    lines.append(_box_separator(w))
-
-    # Map comparison key -> (time field, ror field) for phase context lines
-    phase_context = {
-        "dry_phase_pct": ("dry_phase_time", "dry_phase_ror"),
-        "mid_phase_pct": ("mid_phase_time", "mid_phase_ror"),
-        "dev_phase_pct": ("dev_phase_time", "dev_phase_ror"),
-    }
-
-    # Display in roast-timeline order rather than the worst-deviation-first
-    # sort the comparisons arrive in: the three phases as a block (drying ->
-    # maillard -> development), then the remaining metrics in the order they
-    # occur through the roast. The Status column still flags any problems, so
-    # a stable chronological layout doesn't hide them. Keys not listed (e.g.
-    # a custom targets.json metric) fall to the end in their original order.
-    display_order = [
-        "dry_phase_pct",     # Drying phase
-        "mid_phase_pct",     # Maillard phase
-        "dev_phase_pct",     # Development phase
-        "tp_bt",             # Turning point (earliest event)
-        "fc_bt",             # First crack
-        "ror_at_fc",         # RoR at first crack
-        "dev_phase_time",    # Time from FC to drop
-        "drop_bt",           # Drop
-        "total_time",        # Whole roast
-        "weight_loss_pct",   # Post-roast outcome
-        "heat_adjustments",  # Throughout — count, not an event
-    ]
-    order_index = {key: i for i, key in enumerate(display_order)}
-    ordered = sorted(
-        comparisons,
-        key=lambda c: order_index.get(c.get("metric"), len(display_order)),
-    )
-
-    for comp in ordered:
-        status = comp["status"]
-        # Add visual indicator
-        if status == "OK":
-            indicator = " OK "
-        else:
-            indicator = status
-
-        row = f"  {comp['label']:<20} {comp['actual_display']:>10} {comp['target_str']:>16} {indicator:>10}"
-        lines.append(_box_row(row, "", w))
-
-        # For phase rows, append a sub-line with raw time/RoR so the headline
-        # percentage isn't the only signal (it's a ratio, which hides whether
-        # the miss came from phase duration or from total-time denominator).
-        if metrics is not None and comp.get("metric") in phase_context:
-            time_field, ror_field = phase_context[comp["metric"]]
-            t_str = format_time(metrics.get(time_field, 0))
-            ror_val = metrics.get(ror_field, 0)
-            lines.append(_box_row(f"    -> {t_str} at {ror_val} F/min", "", w))
-
-    lines.append(_box_footer(w))
-    return "\n".join(lines)
-
-
 def display_recommendations(recs, verbose=False):
     """Display prioritized recommendations.
 
@@ -378,7 +296,7 @@ def display_recommendations(recs, verbose=False):
         Formatted string.
     """
     if not recs:
-        return "No recommendations - all metrics on target!"
+        return "No recommendations."
 
     lines = []
     w = 72
@@ -431,7 +349,7 @@ def display_next_roast(actions):
     """Display a "Next Roast" synthesis box with concrete action items.
 
     Args:
-        actions: List of action strings from generate_next_roast_summary().
+        actions: List of next-roast action strings (LLM-generated, cached).
 
     Returns:
         Formatted string, or empty string if no actions.
@@ -511,11 +429,11 @@ def display_roast_comparison(changes, title1, title2):
             v2_str = str(v2)
             d_str = f"{delta:+d}" if isinstance(delta, int) else f"{delta:+.1f}"
 
-        # Direction arrow
-        if direction == "improved":
-            arrow = "  improved"
-        elif direction == "regressed":
-            arrow = "  regressed"
+        # Direction is descriptive only — no target means no "better/worse"
+        if direction == "increased":
+            arrow = "  up"
+        elif direction == "decreased":
+            arrow = "  down"
         else:
             arrow = "  -"
 

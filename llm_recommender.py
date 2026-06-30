@@ -1,26 +1,29 @@
 """LLM-backed recommendation engine for coffee roast analysis.
 
-This replaces the old fixed-template engine. Instead of mapping each
-off-target metric to a hardcoded sentence, it hands Claude the full picture
-of a roast — extracted metrics, target comparisons, RoR diagnostics, the
-move-by-move control timeline (heater/fan changes the operator actually
-made), the bean profile, and visual development data — plus a reference for
-the operator's specific machine, and asks for advice tied to concrete dial
-moves.
+Hands Claude the full picture of a roast — extracted metrics, RoR diagnostics,
+the move-by-move control timeline (heater/fan changes the operator actually
+made), the bean's intended flavor profile, the roaster's own cupping notes,
+and visual development data — plus a reference for the specific machine, and
+asks for advice tied to concrete dial moves.
+
+There are NO numeric target bands. The roaster hasn't dialed in this bean yet,
+so any fixed "target curve" would be an unvalidated guess. Instead the model
+reasons from (1) the bean's intended flavor vs how it actually cupped and
+(2) bean-agnostic roasting theory (RoR shape, phase balance, crash/flick,
+deceleration). Targets become meaningful only once the roaster has a roast
+they love — then that roast's curve is the reference, not a theory band.
 
 The call runs once per roast at scan time and the result is cached in
-roast_history.json, exactly like the old template output. If the API key or
-network is unavailable, this returns (None, status) and the scan still saves
-metrics and target comparisons — there just won't be recommendations.
+roast_history.json. If the API key or network is unavailable, this returns
+(None, status) and the scan still saves the metrics — just no recommendations.
 
 Security: the Anthropic client reads ANTHROPIC_API_KEY from the environment
 (injected by the run_roast-analyzer wrapper). No .env loading, no key in code.
 """
 
 import json
-import os
 
-from roast_metrics import TARGETS, _fmt_time
+from roast_metrics import _fmt_time
 from roast_narrative import build_control_timeline, format_narrative
 from hottop_reference import HOTTOP_CONTROLS
 
@@ -64,21 +67,33 @@ _SYSTEM_PROMPT = (
 You are an expert coffee-roasting coach for a home roaster running a Hottop \
 KN-8828B-2K+ in manual mode with Artisan. You are reviewing one roast.
 
-Your job is to produce advice the roaster can act on at the machine. Tie every \
-recommendation to the actual control moves they made (you are given the heater/\
-fan timeline) and to the levers this machine has — heater %, fan %, and the \
-timing of cuts relative to bean temperature (BT) and first crack (FC). When a \
-metric is off target, explain the likely cause from what they did, then give \
-the concrete fix as a dial move at a specific moment ("ease the heater to ~80% \
-by 250F BT", "make one cut around 340F and hold it through FC"). Do not give \
-vague advice like "charge hotter" if the timeline shows the heater was already \
-maxed — use the airflow and timing levers instead.
+IMPORTANT: there are no fixed numeric targets here. The roaster has not yet \
+dialed in this bean, so any "target curve" with specific phase percentages, \
+times, or drop temperatures would be an unvalidated guess — do NOT judge the \
+roast against invented numeric bands, and do not present any number as a \
+target the roast should have hit. Judge it two ways instead:
 
-Treat the targets as guidance for this bean/regime, not gospel — reason from \
-roasting theory (smoothly declining RoR, ever-decelerating bean temp, drying \
-vs Maillard vs development balance) and from what the bean is supposed to taste \
-like. Drop temp and weight loss are OUTCOMES of development time, not dials to \
-aim at; translate misses there into time-after-FC or heat-timing changes.
+1. FLAVOR: compare the bean's intended flavor profile against how it actually \
+cupped (the roaster's own cupping notes, when present). If it cupped flat, \
+ashy, grassy, baked, sour, etc., work backward to the roast mechanics that \
+cause that fault. If there are no cupping notes yet, say what to taste for.
+
+2. THEORY (bean-agnostic, reliable regardless of target): a smoothly declining \
+rate of rise; an ever-decelerating bean temp through Maillard (Rao's rule — a \
+rising RoR means heat went in too late); no crash or flick into/after first \
+crack; a sensible balance between drying, Maillard, and development; and the \
+fact that drop temp and weight loss are OUTCOMES of development time, not dials.
+
+Tie every recommendation to the actual control moves the roaster made (you are \
+given the heater/fan timeline) and to this machine's levers — heater %, fan %, \
+and the timing of cuts relative to bean temperature (BT) and first crack (FC). \
+Name the dial and the moment ("ease the heater to ~80% by 250F BT", "make one \
+cut around 340F and hold it through FC"). Do not say "charge hotter" if the \
+timeline shows the heater was already maxed — use the airflow and timing levers.
+
+You may reference a metric's value as a fact ("development ran 2:30, ~20% of \
+the roast") and reason about whether that serves the bean's flavor — but frame \
+it as roasting judgment, not conformance to a number.
 
 """
     + HOTTOP_CONTROLS
@@ -87,49 +102,15 @@ Output rules:
 - recommendations: ordered most important first. priority 1 = fix this first, \
 2 = worth improving, 3 = informational. category is a short label like \
 "Heat Control", "Phase Timing", "RoR Control", "Temperature", "Bean Profile", \
-"Flavor Goal", "Visual Dev". text is 1-3 sentences. For flavor-goal advice that \
+"Flavor Goal", "Visual Dev". text is 1-3 sentences. For flavor advice that \
 references long professional cupping notes, put a 2-sentence version in text and \
 the full version in full_text.
 - next_roast: 2-4 short imperative action items for the next roast, each a \
 single concrete change. Deduplicate — don't repeat the same fix two ways.
-- If a roast is genuinely on target, return few or no recommendations rather \
-than inventing problems.
+- If nothing meaningful stands out (the curve looks clean and there's no flavor \
+fault to chase), return few or no recommendations rather than inventing problems.
 """
 )
-
-
-def _targets_block():
-    """Render the active targets as guidance context (not as a verdict)."""
-    lines = []
-    for key, t in TARGETS.items():
-        label = t.get("label", key)
-        if "target" in t:
-            if key == "total_time":
-                rng = f"~{_fmt_time(t['target'])} (+/- {int(t.get('tolerance', 0))}s)"
-            else:
-                rng = f"~{t['target']:g}{t['unit']} (+/- {t.get('tolerance', 0):g})"
-        elif "min" in t and "max" in t:
-            if t["unit"] == "s":
-                rng = f"{_fmt_time(t['min'])}-{_fmt_time(t['max'])}"
-            else:
-                rng = f"{t['min']:g}-{t['max']:g}{t['unit']}"
-        else:
-            rng = f"max {t['max']:g}"
-        lines.append(f"- {label} ({key}): {rng}")
-    return "\n".join(lines)
-
-
-def _comparisons_block(comparisons):
-    """Render the target comparison table (actual vs target, with status)."""
-    if not comparisons:
-        return "No target comparisons available."
-    lines = []
-    for c in comparisons:
-        lines.append(
-            f"- {c['label']}: {c['actual_display']} "
-            f"(target {c['target_str']}) -> {c['status']}"
-        )
-    return "\n".join(lines)
 
 
 def _curated_metrics(metrics):
@@ -200,23 +181,16 @@ def _visual_block(metrics):
     )
 
 
-def _build_user_content(metrics, comparisons, bean_profile, narrative_text,
-                        cupping_notes=""):
+def _build_user_content(metrics, bean_profile, narrative_text, cupping_notes=""):
     """Assemble the full analysis prompt body."""
     sections = [
-        "TARGETS for this bean/regime (guidance, not a verdict):",
-        _targets_block(),
-        "",
-        "TARGET COMPARISON (how this roast landed):",
-        _comparisons_block(comparisons),
-        "",
-        "KEY METRICS:",
+        "KEY METRICS (facts of this roast — not compared to any target band):",
         json.dumps(_curated_metrics(metrics), indent=2, default=str),
         "",
         "CONTROL TIMELINE (the moves the roaster actually made, CHARGE->DROP):",
         narrative_text,
         "",
-        "BEAN PROFILE:",
+        "BEAN PROFILE (what this bean is supposed to taste like):",
         _bean_block(bean_profile),
     ]
     visual = _visual_block(metrics)
@@ -231,13 +205,13 @@ def _build_user_content(metrics, comparisons, bean_profile, narrative_text,
     return "\n".join(sections)
 
 
-def generate_llm_recommendations(metrics, comparisons, data, bean_profile=None):
+def generate_llm_recommendations(metrics, data, bean_profile=None):
     """Generate recommendations + next-roast actions via Claude.
 
     Args:
         metrics: Dict from extract_metrics() (visual fields merged if present).
-        comparisons: List from compare_to_targets().
-        data: Extracted roast data — used to reconstruct the control timeline.
+        data: Extracted roast data — used to reconstruct the control timeline
+            and to read the roaster's own cupping notes.
         bean_profile: Optional bean profile dict.
 
     Returns:
@@ -253,7 +227,7 @@ def generate_llm_recommendations(metrics, comparisons, data, bean_profile=None):
     timeline = build_control_timeline(data)
     narrative_text = format_narrative(timeline)
     user_content = _build_user_content(
-        metrics, comparisons, bean_profile, narrative_text,
+        metrics, bean_profile, narrative_text,
         cupping_notes=data.get("cupping_notes", ""),
     )
 

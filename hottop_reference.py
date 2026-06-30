@@ -30,9 +30,11 @@ Machine reference points (BT = bean temp probe):
 - The BT display flags FC as imminent around 356F.
 - Hottop manual guidance: cut heat / raise fan around 340-345F, before FC, to
   ease the rate of rise into the crack.
-- SAFETY: the machine ejects the beans at 395F BT unless ENTER is held — keep
-  clear of it. Deliberate Full City+ / espresso drops can approach this; flag
-  the safety margin but do not treat a planned dark drop as an error.
+- SAFETY: the machine ejects the beans at 408F BT unless ENTER is held — keep
+  clear of it. (The Hottop manual's 395F figure is wrong; 408F is the real
+  ejection point on this machine.) Deliberate Full City+ / espresso drops can
+  approach this; flag the safety margin but do not treat a planned dark drop as
+  an error.
 
 How to phrase advice for this operator:
 - Name the dial and the moment: "ease the heater from 100% to ~80% by 250F BT",

@@ -9,34 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import analyze
 import roast_analysis
 from roast_analysis import compare_roasts
-from roast_metrics import TARGETS, compare_to_targets
 from roast_narrative import build_control_timeline, format_narrative
 from sentinel_loader import detect_plateau, match_sentinel_to_roast
-
-
-# --- Test helpers ---
-
-def _on_target_value(key):
-    """An on-target value for a metric, derived from the active TARGETS.
-
-    Keeps the test baseline in sync with any targets.json overrides instead
-    of hardcoding numbers that drift when targets are recalibrated.
-    """
-    t = TARGETS[key]
-    if "target" in t:
-        return t["target"]
-    if "min" in t and "max" in t:
-        return round((t["min"] + t["max"]) / 2, 1)
-    # Hard-max target (e.g. heat_adjustments) — stay just under the limit
-    return max(0, t["max"] - 1)
-
-
-def _metrics_with(overrides):
-    """Baseline on-target metrics dict with selected overrides applied."""
-    base = {key: _on_target_value(key) for key in TARGETS}
-    base["ror_smoothness"] = {"severity": "smooth"}
-    base.update(overrides)
-    return base
 
 
 # --- Control timeline reconstruction (the LLM recommender's key input) ---
@@ -92,17 +66,17 @@ def test_timeline_handles_missing_data():
 
 # --- Roast comparison ---
 
-def test_compare_roasts_ideals_follow_targets():
-    """Comparison ideals derive from TARGETS — moving toward the dev-time
-    target range midpoint counts as improvement."""
-    lo = TARGETS["dev_phase_time"]["min"]
-    hi = TARGETS["dev_phase_time"]["max"]
-    mid = (lo + hi) / 2
-    a1 = {"metrics": _metrics_with({"dev_phase_time": lo - 30})}
-    a2 = {"metrics": _metrics_with({"dev_phase_time": mid})}
+def test_compare_roasts_reports_raw_deltas():
+    """With no target bands, compare reports the raw change and a descriptive
+    direction (increased/decreased/unchanged) — no improved/regressed verdict."""
+    a1 = {"metrics": {"dev_phase_time": 120, "drop_bt": 390}}
+    a2 = {"metrics": {"dev_phase_time": 150, "drop_bt": 390}}
     changes = compare_roasts(a1, a2)
     devt = [c for c in changes if c["metric"] == "dev_phase_time"][0]
-    assert devt["direction"] == "improved"
+    assert devt["delta"] == 30
+    assert devt["direction"] == "increased"
+    drop = [c for c in changes if c["metric"] == "drop_bt"][0]
+    assert drop["direction"] == "unchanged"
 
 
 # --- Shared plateau detection ---

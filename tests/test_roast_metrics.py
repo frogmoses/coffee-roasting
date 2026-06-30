@@ -1,4 +1,4 @@
-"""Tests for metric extraction, target comparison, and RoR analysis."""
+"""Tests for metric extraction and RoR analysis."""
 
 import sys
 from pathlib import Path
@@ -7,9 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from roast_metrics import (
-    TARGETS,
     assess_ror_smoothness,
-    compare_to_targets,
     extract_metrics,
     validate_metrics,
 )
@@ -71,40 +69,6 @@ def _build_roast(ror_profile, interval=2.0, charge_bt=250.0, fc_after_segment=0)
         "timeindex": timeindex,
         "events": [],
     }
-
-
-def test_compare_skips_unrecorded_metrics():
-    """Metrics of 0/-1 (event not recorded) must not produce LOW noise."""
-    metrics = {key: 0 for key in TARGETS}
-    metrics["fc_bt"] = -1.0
-    metrics["heat_adjustments"] = 0  # a real value, should be compared
-    comparisons = compare_to_targets(metrics)
-    compared_keys = {c["metric"] for c in comparisons}
-    assert compared_keys == {"heat_adjustments"}
-    assert comparisons[0]["status"] == "OK"
-
-
-def test_compare_dev_time_range_formats_as_mmss():
-    """Seconds-based range targets display as M:SS."""
-    # Pick an in-range value from the active target so the test is robust
-    # to targets.json recalibration
-    val = int((TARGETS["dev_phase_time"]["min"] + TARGETS["dev_phase_time"]["max"]) // 2)
-    metrics = {key: 0 for key in TARGETS}
-    metrics["dev_phase_time"] = val
-    comparisons = compare_to_targets(metrics)
-    devt = [c for c in comparisons if c["metric"] == "dev_phase_time"][0]
-    assert devt["status"] == "OK"
-    assert devt["actual_display"] == f"{val // 60}:{val % 60:02d}"
-    assert "-" in devt["target_str"]
-
-
-def test_compare_dev_time_low_flags():
-    """Dev time below the target range flags LOW."""
-    metrics = {key: 0 for key in TARGETS}
-    metrics["dev_phase_time"] = TARGETS["dev_phase_time"]["min"] - 10
-    comparisons = compare_to_targets(metrics)
-    devt = [c for c in comparisons if c["metric"] == "dev_phase_time"][0]
-    assert devt["status"] == "!! LOW"
 
 
 def test_heat_correlation_boundary():
