@@ -7,12 +7,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import analyze
-from roast_analysis import compare_roasts, generate_next_roast_summary, generate_recommendations
+import roast_analysis
+from roast_analysis import compare_roasts
 from roast_metrics import TARGETS, compare_to_targets
+from roast_narrative import build_control_timeline, format_narrative
 from sentinel_loader import detect_plateau, match_sentinel_to_roast
 
 
-# --- Recommendation engine ---
+# --- Test helpers ---
 
 def _on_target_value(key):
     """An on-target value for a metric, derived from the active TARGETS.
@@ -37,97 +39,58 @@ def _metrics_with(overrides):
     return base
 
 
-def test_on_target_roast_yields_no_mechanic_recs():
-    metrics = _metrics_with({})
-    recs = generate_recommendations(compare_to_targets(metrics), metrics)
-    assert recs == []
+# --- Control timeline reconstruction (the LLM recommender's key input) ---
+
+def _timeline_data():
+    """Synthetic roast with a few control moves, one after DROP."""
+    timex = [float(i * 2) for i in range(15)]  # 0..28s
+    bt = [200.0 + i for i in range(15)]
+    return {
+        "timex": timex,
+        "bt": bt,
+        "heater": [100.0] * 15,
+        "fan": [0.0] * 15,
+        # CHARGE=0, DRY=3, FCs=6, ..., DROP=10
+        "timeindex": [0, 3, 6, 0, 0, 0, 10, 14],
+        "events": [
+            {"index": 0, "type": 3, "percentage": 100, "abs_time": 0.0},
+            {"index": 3, "type": 3, "percentage": 90, "abs_time": 6.0},
+            {"index": 6, "type": 0, "percentage": 20, "abs_time": 12.0},
+            # After DROP (idx 10) — must be excluded from the timeline
+            {"index": 12, "type": 0, "percentage": 100, "abs_time": 24.0},
+        ],
+    }
 
 
-def test_short_dev_time_recommends_running_longer():
-    metrics = _metrics_with({"dev_phase_time": 70, "dev_phase_pct": 12.0})
-    recs = generate_recommendations(compare_to_targets(metrics), metrics)
-    texts = " ".join(r["text"].lower() for r in recs)
-    assert "after fc" in texts or "after first crack" in texts
-    # Grouped: dev time + dev pct produce one rec, not two
-    phase_recs = [r for r in recs if r["category"] == "Phase Timing"]
-    assert len(phase_recs) == 1
+def test_timeline_excludes_post_drop_moves():
+    timeline = build_control_timeline(_timeline_data())
+    moves = timeline["moves"]
+    assert len(moves) == 3  # the post-DROP fan move is dropped
+    assert all(m["rel_time"] <= 20 for m in moves)  # <= DROP time (timex[10])
 
 
-def test_high_tp_gets_a_recommendation():
-    metrics = _metrics_with({"tp_bt": 185.0})
-    recs = generate_recommendations(compare_to_targets(metrics), metrics)
-    assert any(r["category"] == "Charge Temp" for r in recs)
+def test_timeline_annotates_phase_markers():
+    timeline = build_control_timeline(_timeline_data())
+    by_marker = {m["marker"]: m for m in timeline["moves"]}
+    assert by_marker["DRY"]["percentage"] == 90
+    assert by_marker["FCs"]["control"] == "Fan"
+    assert timeline["start_heater"] == 100.0
 
 
-def test_flick_rec_outranks_oscillation():
-    metrics = _metrics_with({
-        "ror_smoothness": {
-            "severity": "moderate", "oscillations": 3,
-            "heat_correlation": "low_input",
-            "fc_crash": True, "fc_flick": True, "crash_min_ror": 2.0,
-        },
-    })
-    recs = generate_recommendations(compare_to_targets(metrics), metrics)
-    flick_recs = [r for r in recs if "flick" in r["text"].lower()]
-    assert flick_recs and flick_recs[0]["priority"] == 1
+def test_format_narrative_renders_moves():
+    text = format_narrative(build_control_timeline(_timeline_data()))
+    assert "DRY" in text and "Heater" in text and "Fan" in text
+    # Three control moves -> three "->" lines
+    assert text.count("->") == 3
 
 
-def test_rising_maillard_ror_recommends_earlier_energy():
-    """Rao's 2nd rule: a rising Maillard RoR yields a deceleration rec and a
-    next-roast action about getting heat in earlier."""
-    metrics = _metrics_with({
-        "ror_smoothness": {
-            "severity": "smooth", "oscillations": 1,
-            "heat_correlation": "low_input",
-            "ror_rising": True, "ror_rise": 7.0,
-        },
-    })
-    comps = compare_to_targets(metrics)
-    recs = generate_recommendations(comps, metrics)
-    decel = [r for r in recs if "maillard" in r["text"].lower() and "declin" in r["text"].lower()]
-    assert decel and decel[0]["category"] == "RoR Control"
-    actions = generate_next_roast_summary(comps, metrics, recs)
-    assert any("turning point" in a.lower() for a in actions)
+def test_timeline_handles_missing_data():
+    timeline = build_control_timeline({"events": [], "timex": [], "timeindex": []})
+    assert timeline["moves"] == []
+    assert format_narrative(timeline).startswith("No control moves")
 
 
-def test_weight_loss_on_target_yields_no_rec():
-    """A roast inside the weight-loss band produces no development rec."""
-    metrics = _metrics_with({"weight_loss_pct": 15.0})
-    comps = compare_to_targets(metrics)
-    wl = [c for c in comps if c["metric"] == "weight_loss_pct"][0]
-    assert wl["status"] == "OK"
-    recs = generate_recommendations(comps, metrics)
-    assert not any(r["category"] == "Development" for r in recs)
-
-
-def test_high_weight_loss_recommends_shortening_development():
-    metrics = _metrics_with({"weight_loss_pct": 18.0})
-    recs = generate_recommendations(compare_to_targets(metrics), metrics)
-    dev = [r for r in recs if r["category"] == "Development"]
-    assert dev and "high" in dev[0]["text"].lower()
-
-
-def test_low_weight_loss_recommends_more_development():
-    metrics = _metrics_with({"weight_loss_pct": 10.0})
-    recs = generate_recommendations(compare_to_targets(metrics), metrics)
-    dev = [r for r in recs if r["category"] == "Development"]
-    assert dev and "low" in dev[0]["text"].lower()
-
-
-def test_unrecorded_weight_loss_is_skipped():
-    """weight_loss_pct of 0 (no weight-out entered) is not flagged LOW."""
-    metrics = _metrics_with({"weight_loss_pct": 0})
-    comps = compare_to_targets(metrics)
-    assert not any(c["metric"] == "weight_loss_pct" for c in comps)
-
-
-def test_high_weight_loss_feeds_next_roast_shorten_action():
-    metrics = _metrics_with({"weight_loss_pct": 18.0})
-    comps = compare_to_targets(metrics)
-    recs = generate_recommendations(comps, metrics)
-    actions = generate_next_roast_summary(comps, metrics, recs)
-    assert any("shorten" in a.lower() for a in actions)
-
+# --- Roast comparison ---
 
 def test_compare_roasts_ideals_follow_targets():
     """Comparison ideals derive from TARGETS — moving toward the dev-time
@@ -231,6 +194,11 @@ def _patched_env(tmp_path, monkeypatch):
     # No find-coffee or sentinel lookups during tests
     monkeypatch.delenv("FIND_COFFEE_URL", raising=False)
     monkeypatch.delenv("SENTINEL_CAPTURES_DIRS", raising=False)
+    # Stub the LLM recommender so scan tests stay offline and deterministic
+    monkeypatch.setattr(
+        roast_analysis, "generate_llm_recommendations",
+        lambda *a, **k: (None, "test-stub"),
+    )
     return logs
 
 

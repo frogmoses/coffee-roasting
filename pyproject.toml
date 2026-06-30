@@ -5,6 +5,7 @@ description = "Coffee roast analysis tool for Hottop KN-8828B-2K+ with Artisan"
 requires-python = ">=3.10"
 dependencies = [
     "requests",
+    "anthropic",
 ]
 
 [tool.hatch.build.targets.wheel]

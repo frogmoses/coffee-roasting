@@ -94,7 +94,7 @@ Parallel enrichment during scan:
 
 ## Target Constants
 
-Defined in `roast_metrics.py` as `DEFAULT_TARGETS`; the active `TARGETS` dict merges optional per-key overrides from `targets.json` in the project root (no code change needed to recalibrate). Calibrated for the hot-charge regime (manual mode, ~300F charge, drop timed from FC) using roast history + theory (Hottop manual safety/FC points, Rao/Cropster RoR guidance, RoastRebels washed-African DTR).
+Defined in `roast_metrics.py` as `DEFAULT_TARGETS`; the active `TARGETS` dict merges optional per-key overrides from `targets.json` in the project root (no code change needed to recalibrate). The table below is the *code defaults*, originally calibrated for a light-medium washed-African regime (hot charge, manual mode, ~300F charge, drop timed from FC) using roast history + theory (Hottop manual safety/FC points, Rao/Cropster RoR guidance, RoastRebels washed-African DTR). The live `targets.json` currently overrides several of these for the **Bolivia Caranavi peaberry, City–Full City+, espresso-leaning** regime now being roasted — see the override note under the table.
 
 | Metric | Target | Tolerance/Range | Key |
 |--------|--------|-----------------|-----|
@@ -109,6 +109,8 @@ Defined in `roast_metrics.py` as `DEFAULT_TARGETS`; the active `TARGETS` dict me
 | RoR at FC | 14-18 F/min | range | `ror_at_fc` |
 | Heat adjustments | max 4 | hard max | `heat_adjustments` |
 | Weight loss | 13-16% | range (diagnostic) | `weight_loss_pct` |
+
+**Active `targets.json` overrides** (current Bolivia / City–Full City+ espresso regime — darker drop, longer/even development than the washed-African defaults): `total_time` 740s ±45, `dev_phase_time` 140-165s, `dev_phase_pct` 19% ±2, `tp_bt` 160-180F, `ror_at_fc` 12-16 F/min, `fc_bt` 356-368F, `drop_bt` 385-403F. Non-overridden keys (`dry_phase_pct`, `mid_phase_pct`, `heat_adjustments`, `weight_loss_pct`) keep the defaults above. Note `drop_bt` now tops out (403F) above `SAFETY_EJECT_BT` (395F) — the user intentionally drops Full City+ for espresso; the 395F constant is unchanged, so deliberate dark drops no longer trip the diagnostic but the safety constant still governs the safety note logic.
 
 `dev_phase_time` (seconds FC→DROP, Artisan's `finishphasetime`) is the actionable development lever; `drop_bt` and `weight_loss_pct` are treated as *outcomes* of dev time, not steering targets — recs translate their misses into time-after-FC adjustments. `weight_loss_pct` (roast/organic loss) is only compared when weight-out was entered (it's 0/skipped otherwise — see the extraction note below). `SAFETY_EJECT_BT = 395` (Hottop hard safety point; the machine also alerts at 356F = FC imminent).
 

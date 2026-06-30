@@ -1,0 +1,9 @@
+{
+  "total_time": {"target": 740, "tolerance": 45},
+  "dev_phase_time": {"min": 140, "max": 165},
+  "dev_phase_pct": {"target": 19.0, "tolerance": 2.0},
+  "tp_bt": {"min": 160, "max": 180},
+  "ror_at_fc": {"min": 12, "max": 16},
+  "fc_bt": {"min": 356, "max": 368},
+  "drop_bt": {"min": 385, "max": 403}
+}
