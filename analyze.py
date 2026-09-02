@@ -10,6 +10,8 @@ Usage:
     python analyze.py compare [id1 id2] # Compare two roasts
     python analyze.py recommend         # Recommendations for latest roast
     python analyze.py cupping <id> --notes "text"  # Add cupping notes
+    python analyze.py cupping <id> --intake        # Guided cupping questions
+    python analyze.py plan [id] --dev 150,90,210   # Contrast set for next session
     python analyze.py full [roast_id]   # Everything: scan + summary + recommendations
     python analyze.py list              # List all analyzed roasts
     python analyze.py bean <name>       # Look up a bean in find-coffee
@@ -23,8 +25,16 @@ import traceback
 from pathlib import Path
 
 from roast_parser import parse_alog, extract_roast_data, scan_roast_logs
-from roast_analysis import analyze_roast, compare_roasts
+from roast_analysis import (
+    analyze_roast,
+    compare_roasts,
+    refresh_recommendations,
+    select_prior_roasts,
+)
+from cupping_intake import run_intake, normalize_intake, intake_to_text
+from roast_plan import build_contrast_plan, parse_dev_times, DEFAULT_DEV_TIMES
 from roast_display import (
+    display_contrast_plan,
     display_roast_summary,
     display_bean_profile,
     display_recommendations,
@@ -169,15 +179,29 @@ def cmd_scan(args):
                     source = visual_data.get("visual_source", "Sentinel")
                     print(f"  Found {source} visual data: {visual_data['score_count']} captures")
 
-        # Run analysis
-        analysis = analyze_roast(data, bean_profile, visual_data)
-        analysis["source_file"] = str(alog_path)
+        # Cupping notes added via the 'cupping' command live only in history —
+        # pass them INTO the analysis (not just restore them after) so a
+        # --force re-scan lets the LLM judge the roast against how it tasted
+        prior_entry = history.get(roast_id)
+        preserved_notes = (prior_entry or {}).get("cupping_notes", "")
 
-        # Preserve cupping notes added via the 'cupping' command — they live
-        # only in history, so a --force re-scan must not wipe them
-        prior = history.get(roast_id)
-        if prior and prior.get("cupping_notes") and not analysis.get("cupping_notes"):
-            analysis["cupping_notes"] = prior["cupping_notes"]
+        # Earlier roasts of the same bean give the LLM the dial-in history
+        prior_roasts = select_prior_roasts(
+            history, roast_id, data.get("title", ""),
+            data.get("roast_date", ""), data.get("batch_nr", 0),
+        )
+
+        # Run analysis
+        analysis = analyze_roast(
+            data, bean_profile, visual_data,
+            cupping_notes=preserved_notes or None,
+            prior_roasts=prior_roasts,
+        )
+        analysis["source_file"] = str(alog_path)
+        # The structured intake lives only in history too — carry it over so
+        # a --force re-scan doesn't drop the answers behind the notes text
+        if (prior_entry or {}).get("cupping_intake"):
+            analysis["cupping_intake"] = prior_entry["cupping_intake"]
 
         history[roast_id] = analysis
         new_count += 1
@@ -270,7 +294,14 @@ def cmd_recommend(args):
 
 
 def cmd_cupping(args):
-    """Add or update cupping notes for a roast."""
+    """Add or update cupping notes for a roast.
+
+    Three ways in: --notes (free text), --intake (guided questions on the
+    terminal), or --intake-json (the same answers as a JSON object, for
+    scripts). The intake is stored structured (`cupping_intake`) AND rendered
+    into `cupping_notes`, so the LLM flavor loop reads it either way; free
+    text given alongside an intake is appended as its "notes" answer.
+    """
     history = load_history()
     roast_id = resolve_roast_id(history, args.roast_id)
 
@@ -278,17 +309,65 @@ def cmd_cupping(args):
         print("Roast not found.")
         return
 
-    if args.notes:
-        history[roast_id]["cupping_notes"] = args.notes
-        save_history(history)
-        print(f"Updated cupping notes for {roast_id}:")
-        print(f"  \"{args.notes}\"")
+    entry = history[roast_id]
+    notes = getattr(args, "notes", None)
+    intake = None
+    intake_json = getattr(args, "intake_json", None)
+    if intake_json:
+        intake = normalize_intake(json.loads(intake_json))
+    elif getattr(args, "intake", False):
+        intake = run_intake()
+        if not intake:
+            print("No answers given — nothing saved.")
+            return
+
+    if intake is not None:
+        if notes:
+            # Free text alongside the intake becomes its notes answer
+            intake["notes"] = (intake.get("notes", "") + " " + notes).strip()
+        entry["cupping_intake"] = intake
+        entry["cupping_notes"] = intake_to_text(intake)
+    elif notes:
+        entry["cupping_notes"] = notes
     else:
-        current = history[roast_id].get("cupping_notes", "")
+        current = entry.get("cupping_notes", "")
         if current:
             print(f"Current notes: \"{current}\"")
+            if entry.get("cupping_intake"):
+                print(f"Intake: {json.dumps(entry['cupping_intake'])}")
         else:
-            print("No cupping notes. Use --notes to add them.")
+            print("No cupping notes. Use --intake (guided) or --notes to add them.")
+        return
+
+    save_history(history)
+    print(f"Updated cupping notes for {roast_id}:")
+    print(f"  \"{entry['cupping_notes']}\"")
+
+    # Flavor (intended vs actual) is the primary judging signal, and the
+    # scan-time recommendations were generated before the roast was tasted
+    # — regenerate them now that we know how it cupped. Fails soft: the
+    # notes are already saved, and the cached recommendations are kept.
+    print("Regenerating recommendations with your cupping notes...")
+    updated, status = refresh_recommendations(entry, history)
+    if updated:
+        save_history(history)
+        print("Recommendations updated — run 'recommend' to view them.")
+    else:
+        print(f"  !! recommendations not refreshed: {status} (previous ones kept)")
+
+
+def cmd_plan(args):
+    """Print a contrast set (same recipe through FC, varied FC->DROP) for
+    the bean of the given/latest roast."""
+    history = load_history()
+    roast_id = resolve_roast_id(history, getattr(args, "roast_id", None))
+    if not roast_id:
+        print("Roast not found.")
+        return
+    dev_text = getattr(args, "dev", None)
+    dev_times = parse_dev_times(dev_text) if dev_text else DEFAULT_DEV_TIMES
+    plan = build_contrast_plan(history, roast_id, dev_times=dev_times)
+    print(display_contrast_plan(plan))
 
 
 def cmd_full(args):
@@ -367,7 +446,8 @@ def main():
                "  python analyze.py full          # Full analysis of latest roast\n"
                "  python analyze.py show 1        # Show batch #1\n"
                "  python analyze.py bean Ethiopia  # Look up a bean\n"
-               "  python analyze.py cupping 1 --notes 'Bright berry, clean finish'\n",
+               "  python analyze.py cupping 1 --intake   # guided tasting questions\n"
+               "  python analyze.py plan --dev 150,90,210  # next session's contrast set\n",
     )
     parser.add_argument("--debug", action="store_true", help="Show full traceback on errors")
 
@@ -395,6 +475,14 @@ def main():
     p_cupping = subparsers.add_parser("cupping", help="Add/view cupping notes")
     p_cupping.add_argument("roast_id", help="Roast ID or batch number")
     p_cupping.add_argument("--notes", "-n", help="Cupping notes text")
+    p_cupping.add_argument("--intake", "-i", action="store_true",
+                           help="Guided cupping questions (sour/roasty, astringency, sweetness, preference)")
+    p_cupping.add_argument("--intake-json", help="Intake answers as a JSON object (for scripts)")
+
+    # plan
+    p_plan = subparsers.add_parser("plan", help="Contrast set for the next session (vary FC->DROP)")
+    p_plan.add_argument("roast_id", nargs="?", default=None, help="Anchor roast ID or batch number (default: latest)")
+    p_plan.add_argument("--dev", help="FC->DROP seconds per batch, comma-separated, in roasting order (default 150,90,210)")
 
     # full
     p_full = subparsers.add_parser("full", help="Full analysis: scan + show + recommend")
@@ -422,6 +510,7 @@ def main():
         "compare": cmd_compare,
         "recommend": cmd_recommend,
         "cupping": cmd_cupping,
+        "plan": cmd_plan,
         "full": cmd_full,
         "list": cmd_list,
         "bean": cmd_bean,

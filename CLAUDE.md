@@ -28,9 +28,11 @@ run_roast-analyzer analyze.py <command>
 coffee-roasting/
 ├── analyze.py              # CLI entry point (argparse dispatch)
 ├── roast_parser.py         # .alog file parsing via ast.literal_eval()
-├── roast_metrics.py        # Metric extraction, RoR analysis, SAFETY_EJECT_BT (no target bands)
-├── roast_analysis.py       # Analysis orchestration + roast comparison (recs delegated to LLM)
+├── roast_metrics.py        # Metric extraction, RoR analysis, curve series for LLM, SAFETY_EJECT_BT (no target bands)
+├── roast_analysis.py       # Analysis orchestration, prior-roast selection, rec refresh, roast comparison
 ├── roast_narrative.py      # CHARGE->DROP control-timeline reconstruction (heater/fan moves)
+├── cupping_intake.py       # Structured tasting questions (QUESTIONS, run_intake, intake_to_text, INTAKE_LEGEND)
+├── roast_plan.py           # Contrast-set planner: same recipe through FC, varied FC->DROP seconds
 ├── llm_recommender.py      # LLM recommender: prompt assembly + claude-opus-4-8 structured call
 ├── hottop_reference.py     # Static Hottop control reference fed to the LLM prompt
 ├── roast_display.py        # Terminal formatting with Unicode box-drawing
@@ -55,23 +57,24 @@ Dispatch table at the bottom of `analyze.py`. Each command maps to a `cmd_*` fun
 
 | Command | Function | Key flow |
 |---------|----------|----------|
-| `full` | `cmd_full()` `:298` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
-| `scan` | `cmd_scan()` `:107` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `enrich_trajectory_with_temps()` -> `analyze_roast()` -> `save_history()` |
-| `show` | `cmd_show()` `:203` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
-| `compare` | `cmd_compare()` `:221` | `compare_roasts()` -> `display_roast_comparison()` |
-| `recommend` | `cmd_recommend()` `:254` | `display_recommendations()` -> `display_next_roast()` (recs + `next_roast` read from cached history) |
-| `cupping` | `cmd_cupping()` `:276` | Read/write `cupping_notes` in history |
-| `list` | `cmd_list()` `:343` | `get_sorted_analyses()` -> `display_roast_list()` |
-| `bean` | `cmd_bean()` `:350` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
+| `full` | `cmd_full()` `:321` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
+| `scan` | `cmd_scan()` `:110` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `enrich_trajectory_with_temps()` -> `select_prior_roasts()` -> `analyze_roast()` -> `save_history()` |
+| `show` | `cmd_show()` `:216` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
+| `compare` | `cmd_compare()` `:234` | `compare_roasts()` -> `display_roast_comparison()` |
+| `recommend` | `cmd_recommend()` `:267` | `display_recommendations()` -> `display_next_roast()` (recs + `next_roast` read from cached history) |
+| `cupping` | `cmd_cupping()` | Read/write `cupping_notes` in history — free text (`--notes`), guided intake (`--intake`), or `--intake-json`; on write, `refresh_recommendations()` re-runs the LLM with the notes (fails soft, keeps cached recs) |
+| `plan` | `cmd_plan()` | `build_contrast_plan()` -> `display_contrast_plan()`; deterministic, no LLM/network |
+| `list` | `cmd_list()` `:362` | `get_sorted_analyses()` -> `display_roast_list()` |
+| `bean` | `cmd_bean()` `:369` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
 
-CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n` (cupping), `--debug` (global; print traceback on errors).
+CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n`, `--intake/-i`, `--intake-json` (cupping), `--dev` (plan; comma-separated FC->DROP seconds in roasting order, default `150,90,210`), `--debug` (global; print traceback on errors).
 
 Roast ID resolution (`resolve_roast_id()`): exact match -> batch number -> partial name (case-insensitive, most recent roast wins on multiple matches).
 
 Scan behaviors:
 - A corrupt `.alog` is skipped with a warning instead of aborting the scan
 - Roast ID collisions (same batch/title/date from a different file) get a `_HHMM` suffix instead of silently overwriting
-- `--force` re-scan preserves `cupping_notes` previously added via the `cupping` command
+- `--force` re-scan preserves `cupping_notes` (and the structured `cupping_intake`) previously added via the `cupping` command **and feeds them into the LLM prompt** (they take precedence over the .alog's Artisan-typed notes)
 - `cmd_compare` errors on an unresolvable given ID instead of silently substituting the latest roasts (defaults to the two most recent only when IDs are omitted)
 - `save_history()` writes atomically (temp file + `os.replace`)
 
@@ -91,11 +94,14 @@ Scan behaviors:
 
 There is no target-comparison step — numeric target bands were removed (see
 "No Target Bands" below). Recommendations and next-roast actions are produced by
-the LLM recommender **once at scan time** and cached in `roast_history.json`.
+the LLM recommender **at scan time** and cached in `roast_history.json`.
 The `recommend`/`full` commands display the cached output; `scan --force`
-regenerates it. If the API key or network is unavailable the recommender fails
+regenerates it, and — the important loop — `cupping --notes` regenerates it via
+`roast_analysis.refresh_recommendations()`, so the model re-judges the roast
+against how it actually tasted (flavor is the primary signal, and scan-time recs
+predate cupping). If the API key or network is unavailable the recommender fails
 soft — the metrics are still saved, recommendations are just empty (the scan log
-prints the reason via `llm_status`).
+prints the reason via `llm_status`; a failed cupping-refresh keeps the cached recs).
 
 Parallel enrichment during scan:
 - `coffee_lookup.lookup_bean()` — queries find-coffee API for bean profile
@@ -166,6 +172,8 @@ Return dict fields:
 
 `extract_metrics()` computes `heat_adjustments` first, then passes the count to `assess_ror_smoothness()`. Weight loss is zeroed when `weightout` is 0 (Artisan reports a garbage 100%).
 
+**Curve series for the LLM**: `build_curve_series(data, step=30)` downsamples the CHARGE→DROP curve into `{time, bt, ror, marker}` rows — one per ~30s plus one at each recorded phase boundary (CHARGE/DRY/FCs/DROP) — using the same interval-derived ~10s BT smoothing and ~30s RoR window as `assess_ror_smoothness()`. Rendered into the LLM prompt by `llm_recommender._curve_block()` so the model can verify the heuristic flags against the curve itself. `ror` is None until a full lookback window fits inside the roast.
+
 ## Recommendation Engine (LLM)
 
 Recommendations are generated by an LLM, not a fixed-template engine. The old
@@ -176,25 +184,50 @@ moves) and reduced it to a single `heat_adjustments` integer.
 
 ### Flow
 
-`roast_analysis.analyze_roast()` `:16` builds metrics, then calls
-`llm_recommender.generate_llm_recommendations(metrics, data, bean_profile)`
-`llm_recommender.py:215`. That function:
+`roast_analysis.analyze_roast()` `:18` builds metrics, then calls
+`llm_recommender.generate_llm_recommendations(metrics, data, bean_profile,
+cupping_notes=, warnings=, prior_roasts=)` `llm_recommender.py:325`. That function:
 
 1. Reconstructs the CHARGE->DROP control timeline from `data` via
    `roast_narrative.build_control_timeline()` / `format_narrative()`.
-2. Assembles the prompt: a curated metrics dict shown as *facts* (incl.
-   `ror_diagnostics` from `ror_smoothness`), the control timeline, the bean's
-   intended flavor profile, visual development, and the operator's own cupping
-   notes. **No target bands** — the prompt explicitly tells the model there are
-   no fixed numeric targets and to judge by theory + flavor instead.
+2. Assembles the prompt: data-quality warnings from `validate_metrics()` (so
+   the model hedges advice built on bad recordings), a curated metrics dict
+   shown as *facts* (incl. `ror_diagnostics` from `ror_smoothness`;
+   `heat_adjustments` is kept even at 0 — zero moves is a meaningful fact), a
+   **downsampled BT/RoR curve** (`roast_metrics.build_curve_series()`, ~30s
+   rows + phase-boundary rows, same smoothing as the RoR analysis — lets the
+   model verify the heuristic crash/flick/rising flags against the curve
+   itself), the control timeline, the bean's intended flavor profile,
+   operator observations (Artisan's `heavy_fc`/`low_fc`/`oily`/`tipping`/
+   `scorching` flags + `roasting_notes` intent), visual development, up to 3
+   **previous roasts of the same bean** (key facts, the advice given after
+   each, and how each cupped — from `roast_analysis.select_prior_roasts()`),
+   and the operator's own cupping notes. **No target bands** — the prompt
+   explicitly tells the model there are no fixed numeric targets and to judge
+   by theory + flavor instead.
 3. Calls `claude-opus-4-8` with **structured output** (`output_config.format`
-   with `_OUTPUT_SCHEMA`, effort `high`, adaptive thinking, non-streaming).
+   with `_OUTPUT_SCHEMA`, effort `high`, adaptive thinking, non-streaming,
+   `max_tokens=16000` — thinking counts against it; a `max_tokens` stop is
+   reported as truncation, not a parse failure).
 4. Returns `({"recommendations": [...], "next_roast": [...]}, status)` or
    `(None, status)` on any failure.
 
 `analyze_roast()` stores `recommendations`, `next_roast`, and `llm_status` in
 the analysis dict (persisted to history). The display layer is unchanged — the
 model is instructed to emit the same rec shape it already consumed.
+
+`roast_analysis.refresh_recommendations(analysis, history)` re-runs the same
+call for an already-analyzed roast (re-parses `source_file` for the timeline
+and curve, reuses cached metrics/bean profile/warnings, passes the history's
+cupping notes). `cmd_cupping` calls it after saving notes — this closes the
+flavor loop. Fails soft: on any error the cached recs stay untouched.
+
+`roast_analysis.select_prior_roasts(history, roast_id, title, roast_date,
+batch_nr, limit=3)` picks earlier roasts of the same bean (title match,
+case-insensitive; ordered by (date, batch)) and compacts each to key metrics +
+prior `next_roast` advice + cupping notes. This is the incremental path toward
+"match the roast you loved" — the model sees the dial-in sequence, not one
+roast in isolation.
 
 ### What the model is told (`_SYSTEM_PROMPT`, `hottop_reference.py`)
 
@@ -208,6 +241,14 @@ model is instructed to emit the same rec shape it already consumed.
   Drop temp and weight loss are *outcomes* of dev time; translate into
   time-after-FC or heat-timing changes. A metric value may be cited as a fact,
   not as conformance to a band.
+- The RoR diagnostic flags are machine-tuned heuristics — check them against
+  the provided BT/RoR curve and trust the curve when they disagree.
+- Data-quality warnings mean the affected metrics are unreliable — hedge or
+  skip advice that depends on them; if recording problems block analysis, make
+  fixing the recording the top action.
+- Previous roasts of the bean are the dial-in history — note whether earlier
+  advice was applied and whether it worked (especially in the cup), and build
+  on the roast-to-roast deltas instead of repeating generic advice.
 - `hottop_reference.py:HOTTOP_CONTROLS` is prepended as machine background
   (heater/fan/drum/damper behavior, 340-345F cut point, 356F FC indicator,
   408F safety eject).
@@ -235,8 +276,50 @@ input the old engine threw away.
 
 `generate_llm_recommendations()` returns `(None, status)` — never raises into the
 scan — for: anthropic SDK not installed, no API credentials, API/network error,
-model refusal, or unparseable output. `cmd_scan` prints the non-"ok" status as
-`!! recommendations skipped: <reason>`. The metrics are still saved.
+model refusal, output truncated at `max_tokens`, or unparseable output.
+`cmd_scan` prints the non-"ok" status as `!! recommendations skipped: <reason>`.
+The metrics are still saved. A failed `refresh_recommendations()` (e.g. from
+`cupping --notes`) keeps the previously cached recommendations and reports why.
+
+## Cupping Intake & Contrast Planner
+
+The operator is not a trained cupper and said so: free-text flavor-wheel notes
+were coming back empty ("no discernible profile"). Two pieces replace vocabulary
+with perception and experiment design:
+
+**`cupping_intake.py`** — `QUESTIONS` is an ordered list of {key, prompt,
+choices}: brew method, rest days, `balance` (-2 sour .. +2 roasty; the
+development axis), `astringency` (0-3), `sweetness` (0-3), `body` (-1..1),
+`preference` vs previous batch (worse/same/better/na), `drink_again`
+(yes/meh/no), free `notes`. `run_intake(ask, say)` prompts on the terminal
+(blank skips, invalid re-asks); `normalize_intake(dict)` validates JSON/script
+input (accepts values, 1-based menu numbers, or label prefixes);
+`intake_to_text()` renders one paragraph. `cmd_cupping` stores the dict as
+`cupping_intake` in history AND writes the rendered paragraph to
+`cupping_notes`, so the LLM loop and `select_prior_roasts()` need no schema
+change. `INTAKE_LEGEND` is appended to the LLM system prompt so the model reads
+the axes as roast mechanics (sour = under-developed, roasty = over, astringent =
+uneven/scorched) and weights the preference answers above descriptors.
+
+**`roast_plan.py`** — `build_contrast_plan(history, roast_id, dev_times)`
+takes the anchor roast's actual control moves (re-parses `source_file`,
+splits them at FC into shared pre-FC moves and "FC+Ns" post-FC moves), pools
+FC time/BT stats over every roast of the same title, measures the same-day
+batch-position FC shift (drum heat-soak), and projects the drop BT for each
+FC->DROP duration from the bean's measured post-FC rise (fallback
+`DEFAULT_POST_FC_RISE_F_PER_MIN = 9.5`, measured Aug 2026), flagging any batch
+within `EJECT_MARGIN_F` of `SAFETY_EJECT_BT`. `dev_times` order = roasting
+order; default `(150, 90, 210)` puts the control first so it is roasted under
+the same cold-drum conditions as history's first-of-day batches. The only
+lever varied is FC->DROP seconds because timing from FC insulates the
+experiment from heat-soak drift (a warmer drum moves FC earlier, but "N seconds
+after FC" still means the same thing). Deterministic — no LLM. Rendered by
+`roast_display.display_contrast_plan()`.
+
+Measured machine facts behind this (from roasts #8-#20): a single -10% heater
+step shows up in ET only after ~60-70s and is within BT-RoR noise for 2+
+minutes; identical manual schedules still spread FC by ~90s; later batches on
+the same day reach FC 15-35s sooner.
 
 ## Display Layer (`roast_display.py`)
 
@@ -251,6 +334,7 @@ Key functions:
 - `display_roast_comparison()` — side-by-side delta table; direction is descriptive only (increased/decreased/unchanged), since with no target there's no "better/worse" verdict
 - `display_trend()` — all roasts in a compact metric table
 - `display_roast_list()` — batch #, date, title, time, drop temp
+- `display_contrast_plan()` — printable contrast set: shared schedule, batches with projected drop BT, notes
 
 **Phase breakdown time/RoR annotation fields**: `dry_phase_time`/`dry_phase_ror`, `mid_phase_time`/`mid_phase_ror`, `dev_phase_time`/`dev_phase_ror` (all populated by `extract_metrics()` in `roast_metrics.py`). Note the development RoR field is `dev_phase_ror`, not `finish_phase_ror` — the internal Artisan field name is `finishphase` but the extracted metric is keyed `dev_phase_ror`.
 
@@ -460,6 +544,7 @@ anymore. `detect_plateau()` is still used display-side by `_visual_summary()`.
 - `llm_status` string (`"ok"` or the reason recs were skipped)
 - `bean_profile` dict or null
 - `cupping_notes`, `roasting_notes`
+- `cupping_intake` dict (only when entered via `cupping --intake`/`--intake-json`; preserved across `--force`)
 - `warnings` list (data-quality warnings from `validate_metrics()`)
 - `source_file` (path to .alog)
 

@@ -23,9 +23,10 @@ Security: the Anthropic client reads ANTHROPIC_API_KEY from the environment
 
 import json
 
-from roast_metrics import _fmt_time
+from roast_metrics import _fmt_time, build_curve_series
 from roast_narrative import build_control_timeline, format_narrative
 from hottop_reference import HOTTOP_CONTROLS
+from cupping_intake import INTAKE_LEGEND
 
 # Opus 4.8 — best reasoning, closest to a direct expert read of the log.
 # Runs a few times a week (once per new roast), cached after.
@@ -95,8 +96,24 @@ You may reference a metric's value as a fact ("development ran 2:30, ~20% of \
 the roast") and reason about whether that serves the bean's flavor — but frame \
 it as roasting judgment, not conformance to a number.
 
+You are given a downsampled BT/RoR series for the roast. The RoR diagnostic \
+flags (crash/flick/rising) are machine-tuned heuristics — check them against \
+the curve itself, and trust the curve when they disagree.
+
+If DATA QUALITY WARNINGS are listed, treat the affected metrics as unreliable: \
+skip or hedge advice that depends on them, and if the problem blocks analysis \
+(e.g. CHARGE or FC never marked), make fixing the recording the top action.
+
+If PREVIOUS ROASTS of this bean are shown, use them: note whether the roaster \
+applied the earlier next-roast advice, whether the change moved the roast in \
+the intended direction (especially in the cup), and build on that history \
+rather than repeating generic advice. The roast-to-roast deltas are the real \
+dial-in signal.
+
 """
     + HOTTOP_CONTROLS
+    + "\n"
+    + INTAKE_LEGEND
     + """
 Output rules:
 - recommendations: ordered most important first. priority 1 = fix this first, \
@@ -128,6 +145,10 @@ def _curated_metrics(metrics):
         "heat_adjustments", "weight_in", "weight_out", "weight_loss_pct",
     ]
     out = {k: metrics.get(k) for k in keys if metrics.get(k) not in (None, 0)}
+    # heat_adjustments is the one metric where 0 is a meaningful fact (zero
+    # heater moves the whole roast), not "unrecorded" — keep it explicitly.
+    if "heat_adjustments" in metrics:
+        out["heat_adjustments"] = metrics["heat_adjustments"]
     ror = metrics.get("ror_smoothness", {})
     if ror:
         out["ror_diagnostics"] = {
@@ -181,11 +202,104 @@ def _visual_block(metrics):
     )
 
 
-def _build_user_content(metrics, bean_profile, narrative_text, cupping_notes=""):
+def _curve_block(data):
+    """Render the downsampled BT/RoR series as prompt text lines."""
+    rows = build_curve_series(data)
+    if not rows:
+        return ""
+    lines = []
+    for r in rows:
+        ror = f"RoR {r['ror']:5.1f}" if r["ror"] is not None else "RoR    --"
+        marker = f"   [{r['marker']}]" if r["marker"] else ""
+        lines.append(f"{_fmt_time(r['time']):>5}  BT {r['bt']:6.1f}F  {ror}{marker}")
+    return "\n".join(lines)
+
+
+def _observations_block(data):
+    """Operator-marked physical flags and roasting notes from Artisan."""
+    parts = []
+    flags = [label for key, label in (
+        ("heavy_fc", "heavy first crack"),
+        ("low_fc", "quiet/low first crack"),
+        ("oily", "oily surface"),
+        ("tipping", "tipping"),
+        ("scorching", "scorching"),
+    ) if data.get(key)]
+    if flags:
+        parts.append("Operator-marked observations: " + ", ".join(flags))
+    notes = data.get("roasting_notes", "")
+    if notes:
+        parts.append(f"Roasting notes (operator's intent/plan for this roast): {notes}")
+    return "\n".join(parts)
+
+
+def _prior_block(prior_roasts):
+    """Render earlier roasts of the same bean: facts, prior advice, and how
+    each cupped — the dial-in history the model should build on."""
+    if not prior_roasts:
+        return ""
+    lines = []
+    for p in prior_roasts:
+        m = p.get("metrics", {})
+        facts = []
+        if m.get("total_time"):
+            facts.append(f"total {_fmt_time(m['total_time'])}")
+        if m.get("fc_time"):
+            fc = f"FC {_fmt_time(m['fc_time'])}"
+            if m.get("fc_bt"):
+                fc += f" @ {m['fc_bt']:g}F"
+            facts.append(fc)
+        if m.get("dev_phase_time"):
+            dev = f"dev {_fmt_time(m['dev_phase_time'])}"
+            if m.get("dev_phase_pct"):
+                dev += f" ({m['dev_phase_pct']:g}%)"
+            facts.append(dev)
+        if m.get("drop_bt"):
+            facts.append(f"drop {m['drop_bt']:g}F")
+        if m.get("weight_loss_pct"):
+            facts.append(f"{m['weight_loss_pct']:g}% loss")
+        if m.get("heat_adjustments") is not None:
+            facts.append(f"{m['heat_adjustments']} heater moves")
+        ror_bits = [b for b, flag in (
+            (p.get("ror_severity", ""), True),
+            ("FC crash", p.get("fc_crash")),
+            ("FC flick", p.get("fc_flick")),
+            ("rising Maillard RoR", p.get("ror_rising")),
+        ) if flag and b]
+        if ror_bits:
+            facts.append("RoR " + ", ".join(ror_bits))
+        header = f"Batch {p.get('batch_nr', '?')} ({p.get('roast_date', 'unknown date')})"
+        lines.append(f"{header}: {', '.join(facts) if facts else 'no metrics recorded'}")
+        advice = p.get("next_roast") or []
+        if advice:
+            lines.append(f"  Advised after that roast: {'; '.join(advice)}")
+        notes = p.get("cupping_notes", "")
+        lines.append(f"  Cupped: \"{notes}\"" if notes else "  Cupped: (no notes)")
+    return "\n".join(lines)
+
+
+def _build_user_content(metrics, data, bean_profile, narrative_text,
+                        cupping_notes="", warnings=None, prior_roasts=None):
     """Assemble the full analysis prompt body."""
-    sections = [
+    sections = []
+    if warnings:
+        sections += [
+            "DATA QUALITY WARNINGS (recording problems — hedge advice that depends on these):",
+            "\n".join(f"- {w}" for w in warnings),
+            "",
+        ]
+    sections += [
         "KEY METRICS (facts of this roast — not compared to any target band):",
         json.dumps(_curated_metrics(metrics), indent=2, default=str),
+    ]
+    curve = _curve_block(data)
+    if curve:
+        sections += [
+            "",
+            "BT/RoR CURVE (downsampled ~30s, BT lightly smoothed, RoR in F/min):",
+            curve,
+        ]
+    sections += [
         "",
         "CONTROL TIMELINE (the moves the roaster actually made, CHARGE->DROP):",
         narrative_text,
@@ -193,11 +307,17 @@ def _build_user_content(metrics, bean_profile, narrative_text, cupping_notes="")
         "BEAN PROFILE (what this bean is supposed to taste like):",
         _bean_block(bean_profile),
     ]
+    observations = _observations_block(data)
+    if observations:
+        sections += ["", "OPERATOR OBSERVATIONS:", observations]
     visual = _visual_block(metrics)
     if visual:
         sections += ["", "VISUAL DEVELOPMENT:", visual]
+    prior = _prior_block(prior_roasts)
+    if prior:
+        sections += ["", "PREVIOUS ROASTS OF THIS BEAN (oldest first):", prior]
     if cupping_notes:
-        sections += ["", "ROASTER'S OWN CUPPING NOTES:", cupping_notes]
+        sections += ["", "ROASTER'S OWN CUPPING NOTES (this roast):", cupping_notes]
     sections += [
         "",
         "Analyze this roast and return recommendations and next-roast actions.",
@@ -205,14 +325,22 @@ def _build_user_content(metrics, bean_profile, narrative_text, cupping_notes="")
     return "\n".join(sections)
 
 
-def generate_llm_recommendations(metrics, data, bean_profile=None):
+def generate_llm_recommendations(metrics, data, bean_profile=None,
+                                 cupping_notes=None, warnings=None,
+                                 prior_roasts=None):
     """Generate recommendations + next-roast actions via Claude.
 
     Args:
         metrics: Dict from extract_metrics() (visual fields merged if present).
-        data: Extracted roast data — used to reconstruct the control timeline
-            and to read the roaster's own cupping notes.
+        data: Extracted roast data — used to reconstruct the control timeline,
+            the BT/RoR curve, and the operator's Artisan-recorded notes/flags.
         bean_profile: Optional bean profile dict.
+        cupping_notes: Optional override for the roaster's cupping notes —
+            notes added via the `cupping` command live in history, not the
+            .alog, and take precedence when provided.
+        warnings: Optional list of data-quality warnings from validate_metrics().
+        prior_roasts: Optional list of compact prior-roast dicts (same bean)
+            from roast_analysis.select_prior_roasts().
 
     Returns:
         (result, status) where result is
@@ -227,15 +355,19 @@ def generate_llm_recommendations(metrics, data, bean_profile=None):
     timeline = build_control_timeline(data)
     narrative_text = format_narrative(timeline)
     user_content = _build_user_content(
-        metrics, bean_profile, narrative_text,
-        cupping_notes=data.get("cupping_notes", ""),
+        metrics, data, bean_profile, narrative_text,
+        cupping_notes=cupping_notes or data.get("cupping_notes", ""),
+        warnings=warnings,
+        prior_roasts=prior_roasts,
     )
 
     try:
         client = anthropic.Anthropic()
         response = client.messages.create(
             model=MODEL,
-            max_tokens=8000,
+            # Covers adaptive thinking (which counts against max_tokens) plus
+            # the JSON output; 8000 risked truncation at effort "high".
+            max_tokens=16000,
             thinking={"type": "adaptive"},
             output_config={
                 "effort": "high",
@@ -253,6 +385,11 @@ def generate_llm_recommendations(metrics, data, bean_profile=None):
 
     if response.stop_reason == "refusal":
         return None, "model declined to analyze this roast"
+
+    # Truncated output means broken JSON — report the real cause instead of
+    # letting it surface as a misleading parse failure.
+    if response.stop_reason == "max_tokens":
+        return None, "output truncated at max_tokens — raise max_tokens in llm_recommender.py"
 
     # With adaptive thinking the first block may be a thinking block; the
     # json_schema format guarantees the text block is valid JSON.

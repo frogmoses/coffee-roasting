@@ -513,3 +513,78 @@ def display_roast_list(analyses):
 
     lines.append(_box_footer(w))
     return "\n".join(lines)
+
+
+def _wrap_rows(text, width, prefix="  ", indent="  "):
+    """Wrap text into box rows (first line with prefix, rest with indent)."""
+    rows = []
+    max_w = width - len(indent) - 4
+    first = True
+    while len(text) > max_w:
+        cut = text[:max_w].rfind(" ")
+        if cut <= 0:
+            cut = max_w
+        rows.append(_box_row(f"{prefix if first else indent}{text[:cut]}", "", width))
+        text = text[cut:].lstrip()
+        first = False
+    if text:
+        rows.append(_box_row(f"{prefix if first else indent}{text}", "", width))
+    return rows
+
+
+def display_contrast_plan(plan):
+    """Render a contrast-set plan from roast_plan.build_contrast_plan().
+
+    Printable: the shared recipe through FC, then one line per batch with
+    its FC->DROP seconds and projected drop temperature, then the notes
+    (FC spread, heat-soak shift, safety).
+    """
+    w = 72
+    lines = [_box_header(f"Contrast Set: {plan['bean']}", w)]
+    lines += _wrap_rows(
+        f"Recipe from batch #{plan['anchor_batch']} ({plan['anchor_date']}). "
+        "Same moves through FC; only the FC->DROP seconds change.", w, prefix=" ", indent=" ")
+    stats = plan["fc_stats"]
+    if stats["count"]:
+        lines.append(_box_row(
+            f"FC on this recipe: ~{format_time(stats['fc_time_mean'])} "
+            f"@ {stats['fc_bt_mean']:.0f}F over {stats['count']} roast(s)", "", w))
+    lines.append(_box_separator(w))
+
+    base = plan["base_schedule"]
+    moves = base.get("moves", [])
+    start = base.get("start") or {}
+    lines.append(_box_row("Shared schedule (time from CHARGE):", "", w))
+    # The timeline usually logs the charge heater setting as a move at 0:00;
+    # only synthesize a start row when it doesn't.
+    if start.get("heater") is not None and not any(m.get("marker") == "CHARGE" for m in moves):
+        lines.append(_box_row(
+            f"   0:00           Heater {start['heater']:.0f}%  Fan {start.get('fan') or 0:.0f}%  [CHARGE]", "", w))
+    for mv in moves:
+        marker = f"  [{mv['marker']}]" if mv.get("marker") else ""
+        bt = f"BT {mv['bt']:.0f}F" if mv.get("bt") is not None else ""
+        lines.append(_box_row(
+            f"  {format_time(mv['rel_time']):>5}  {bt:<9} {mv['control']} -> {mv['percentage']:.0f}%{marker}",
+            "", w))
+    if not moves:
+        lines.append(_box_row("  (no schedule available — see notes)", "", w))
+    for mv in plan.get("post_fc_moves", []):
+        lines.append(_box_row(
+            f"  FC+{mv['after_fc']:.0f}s  {mv['control']} -> {mv['percentage']:.0f}%  (keep for every batch)",
+            "", w))
+    lines.append(_box_separator(w))
+
+    lines.append(_box_row("Batches, in roasting order (drop timed from FC):", "", w))
+    for c in plan["contrasts"]:
+        lines.append(_box_row(
+            f"  {c['order']}. FC + {c['dev_s']:>3}s  -> drop ~{c['projected_drop_bt']}F   {c['label']}",
+            "", w))
+        if c["unsafe"]:
+            lines.append(_box_row(
+                f"        !! near eject: only {c['eject_margin']}F under the safety limit", "", w))
+    if plan["notes"]:
+        lines.append(_box_separator(w))
+        for note in plan["notes"]:
+            lines += _wrap_rows("- " + note, w, prefix="  ", indent="    ")
+    lines.append(_box_footer(w))
+    return "\n".join(lines)

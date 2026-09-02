@@ -314,6 +314,87 @@ def assess_ror_smoothness(data, heat_adjustment_count=0):
     }
 
 
+def build_curve_series(data, step=30):
+    """Downsample the CHARGE->DROP curve into (time, BT, RoR) rows.
+
+    The crash/flick/rising flags from assess_ror_smoothness() are heuristics
+    tuned for this machine; handing the LLM the (lightly smoothed) curve
+    itself lets it verify or override them and spot shapes the flags don't
+    encode. Emits a row roughly every `step` seconds plus one at each
+    recorded phase boundary (CHARGE/DRY/FCs/DROP), using the same ~10s BT
+    smoothing and ~30s RoR window as the smoothness analysis.
+
+    Args:
+        data: Extracted roast data from roast_parser.extract_roast_data().
+        step: Target seconds between rows.
+
+    Returns:
+        List of {"time": rel_seconds, "bt": F, "ror": F/min or None,
+        "marker": "CHARGE"|"DRY"|"FCs"|"DROP"|""}. Empty list when there
+        isn't enough data.
+    """
+    bt = data.get("bt", [])
+    timex = data.get("timex", [])
+    timeindex = data.get("timeindex", [])
+    if len(bt) < 10 or len(timex) < 10 or len(timeindex) < 7:
+        return []
+
+    charge_idx = max(timeindex[0], 0)  # -1 means CHARGE not set
+    drop_idx = timeindex[6] if timeindex[6] > 0 else len(bt) - 1
+    drop_idx = min(drop_idx, len(bt) - 1, len(timex) - 1)
+    if drop_idx <= charge_idx:
+        return []
+
+    # Same interval-derived windows as assess_ror_smoothness()
+    deltas = [
+        timex[i] - timex[i - 1]
+        for i in range(charge_idx + 1, min(charge_idx + 50, len(timex)))
+    ]
+    deltas = [d for d in deltas if d > 0]
+    interval = sorted(deltas)[len(deltas) // 2] if deltas else 2.0
+    window = max(3, round(30.0 / interval))
+    smooth_half = max(1, round(5.0 / interval))
+
+    n = len(bt)
+    bt_s = []
+    for i in range(n):
+        lo = max(0, i - smooth_half)
+        hi = min(n, i + smooth_half + 1)
+        bt_s.append(sum(bt[lo:hi]) / (hi - lo))
+
+    # Phase boundary rows are always emitted, with a marker
+    markers = {charge_idx: "CHARGE"}
+    if len(timeindex) > 1 and timeindex[1] > 0:
+        markers[timeindex[1]] = "DRY"
+    if len(timeindex) > 2 and timeindex[2] > 0:
+        markers[timeindex[2]] = "FCs"
+    markers[drop_idx] = "DROP"
+
+    charge_time = timex[charge_idx]
+    rows = []
+    next_t = 0.0
+    for i in range(charge_idx, drop_idx + 1):
+        rel = timex[i] - charge_time
+        marker = markers.get(i, "")
+        if rel < next_t and not marker:
+            continue
+        # RoR needs a full lookback window inside the roast
+        ror = None
+        if i - window >= charge_idx:
+            dt = timex[i] - timex[i - window]
+            if dt > 0:
+                ror = round((bt_s[i] - bt_s[i - window]) / dt * 60, 1)
+        rows.append({
+            "time": rel,
+            "bt": round(bt_s[i], 1),
+            "ror": ror,
+            "marker": marker,
+        })
+        if rel >= next_t:
+            next_t = rel + step
+    return rows
+
+
 def extract_metrics(data):
     """Extract all relevant metrics from roast data.
 
