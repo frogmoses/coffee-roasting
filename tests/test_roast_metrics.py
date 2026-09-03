@@ -184,3 +184,56 @@ def test_validate_flags_negative_charge():
     metrics = {"charge_bt": -1.0, "charge_et": -1.0}
     warnings = validate_metrics(metrics)
     assert any("CHARGE BT missing" in w for w in warnings)
+
+
+# --- Curve-detected first crack ---
+
+from roast_metrics import detect_fc_from_curve
+
+
+def _fc_curve(mark_offset_s=0, crash_at_s=600):
+    """Synthetic roast (2s sampling): BT climbs ~0.2F/s from 260F, RoR steady,
+    then the RoR crashes at `crash_at_s` (BT ~360F). FCs marked at
+    crash_at_s + mark_offset_s."""
+    n = 400  # 800s
+    timex = [float(i * 2) for i in range(n)]
+    bt = []
+    for i in range(n):
+        t = timex[i]
+        if t < crash_at_s:
+            bt.append(240.0 + 0.2 * t)               # 12 F/min
+        else:
+            bt.append(240.0 + 0.2 * crash_at_s + 0.1 * (t - crash_at_s))  # 6 F/min
+    fc_idx = int((crash_at_s + mark_offset_s) / 2)
+    return {"timex": timex, "bt": bt, "timeindex": [0, 150, fc_idx, 0, 0, 0, n - 1, 0]}
+
+
+def test_detect_fc_finds_crash_near_mark():
+    check = detect_fc_from_curve(_fc_curve(mark_offset_s=0))
+    assert check is not None
+    assert abs(check["offset"]) <= 10
+    assert check["ror_drop"] < -3
+    assert not check["mark_suspect"]
+    assert "right at your mark" in check["details"]
+
+
+def test_detect_fc_flags_late_mark():
+    # Operator marked FC 60s after the curve crashed
+    check = detect_fc_from_curve(_fc_curve(mark_offset_s=60))
+    assert check["offset"] <= -50
+    assert check["mark_suspect"]
+    assert "before your mark" in check["details"]
+
+
+def test_detect_fc_without_mark_reports_detection_only():
+    data = _fc_curve()
+    data["timeindex"][2] = 0  # FC never marked
+    check = detect_fc_from_curve(data)
+    assert check["offset"] is None and check["mark_time"] is None
+    assert check["details"].startswith("FC not marked")
+
+
+def test_detect_fc_returns_none_when_curve_never_reaches_band():
+    data = _fc_curve()
+    data["bt"] = [v - 100 for v in data["bt"]]  # tops out ~280F
+    assert detect_fc_from_curve(data) is None

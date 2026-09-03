@@ -100,6 +100,14 @@ You are given a downsampled BT/RoR series for the roast. The RoR diagnostic \
 flags (crash/flick/rising) are machine-tuned heuristics — check them against \
 the curve itself, and trust the curve when they disagree.
 
+fc_mark_check (when present) locates first crack from the BT curve itself — \
+the steam-release RoR crash — and gives its offset from the operator's FCs \
+mark. This bean cracks quietly and the operator marks by ear, so a large \
+offset (mark_suspect) means the development time and everything timed from \
+FC are uncertain by about that much; say so, and prefer advice that doesn't \
+hinge on a precise FC. A consistent offset across previous roasts is worth \
+naming: it says the operator marks systematically early or late.
+
 If DATA QUALITY WARNINGS are listed, treat the affected metrics as unreliable: \
 skip or hedge advice that depends on them, and if the problem blocks analysis \
 (e.g. CHARGE or FC never marked), make fixing the recording the top action.
@@ -149,6 +157,11 @@ def _curated_metrics(metrics):
     # heater moves the whole roast), not "unrecorded" — keep it explicitly.
     if "heat_adjustments" in metrics:
         out["heat_adjustments"] = metrics["heat_adjustments"]
+    fc_check = metrics.get("fc_check")
+    if fc_check:
+        out["fc_mark_check"] = {k: fc_check.get(k) for k in (
+            "detected_time", "detected_bt", "offset", "mark_suspect", "details",
+        ) if fc_check.get(k) is not None}
     ror = metrics.get("ror_smoothness", {})
     if ror:
         out["ror_diagnostics"] = {
@@ -268,6 +281,8 @@ def _prior_block(prior_roasts):
         ) if flag and b]
         if ror_bits:
             facts.append("RoR " + ", ".join(ror_bits))
+        if p.get("fc_offset") is not None:
+            facts.append(f"curve FC {p['fc_offset']:+d}s vs mark")
         header = f"Batch {p.get('batch_nr', '?')} ({p.get('roast_date', 'unknown date')})"
         lines.append(f"{header}: {', '.join(facts) if facts else 'no metrics recorded'}")
         advice = p.get("next_roast") or []

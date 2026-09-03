@@ -158,6 +158,18 @@ def display_roast_summary(analysis):
     lines.append(_box_row("Rate of Rise (F/min)", "", w))
     lines.append(_box_row(f"  At FC: {m.get('ror_at_fc', 0)}", f"Overall: {m.get('total_ror', 0)}", w))
     lines.append(_box_row(f"  Drying: {m.get('dry_phase_ror', 0)}", f"Maillard: {m.get('mid_phase_ror', 0)}", w))
+    # Curve-detected FC: where the steam-release RoR crash sits vs the mark
+    fc_check = m.get("fc_check")
+    if fc_check:
+        if fc_check.get("offset") is None:
+            lines.append(_box_row(
+                f"  FC by curve: {format_time(fc_check['detected_time'])} @ {fc_check['detected_bt']:.0f}F (no mark to compare)", "", w))
+        else:
+            off = fc_check["offset"]
+            rel = "at mark" if abs(off) <= 5 else (f"{abs(off)}s before mark" if off < 0 else f"{off}s after mark")
+            flag = "  ! check mark" if fc_check.get("mark_suspect") else ""
+            lines.append(_box_row(
+                f"  FC by curve: {format_time(fc_check['detected_time'])} @ {fc_check['detected_bt']:.0f}F, {rel}{flag}", "", w))
     lines.append(_box_row(f"  Heat adjustments: {m.get('heat_adjustments', 0)}", "", w))
     ror_info = m.get("ror_smoothness", {})
     if ror_info.get("severity"):
@@ -444,6 +456,15 @@ def display_roast_comparison(changes, title1, title2):
     return "\n".join(lines)
 
 
+def _fc_offset_cell(metrics):
+    """Trend-table cell: curve-detected FC minus the mark, e.g. '+14s'."""
+    check = metrics.get("fc_check") or {}
+    off = check.get("offset")
+    if off is None:
+        return "--"
+    return f"{off:+d}s"
+
+
 def display_trend(analyses):
     """Display simple text trend across roasts.
 
@@ -462,20 +483,21 @@ def display_trend(analyses):
     lines.append(_box_header("Roast Trends", w))
 
     # Show each roast as a row
-    hdr = f"  {'#':<4} {'Date':<12} {'Dry%':>6} {'Mail%':>6} {'Dev%':>6} {'RoR@FC':>7} {'Heat':>5}"
+    hdr = f"  {'#':<3} {'Date':<10} {'Dry%':>6} {'Mail%':>6} {'Dev%':>6} {'RoR@FC':>7} {'Heat':>5} {'FCoff':>6}"
     lines.append(_box_row(hdr, "", w))
     lines.append(_box_separator(w))
 
     for a in analyses:
         m = a.get("metrics", {})
         row = (
-            f"  {a.get('batch_nr', '?'):<4} "
-            f"{a.get('roast_date', '?'):<12} "
+            f"  {a.get('batch_nr', '?'):<3} "
+            f"{a.get('roast_date', '?'):<10} "
             f"{m.get('dry_phase_pct', 0):>5.1f}% "
             f"{m.get('mid_phase_pct', 0):>5.1f}% "
             f"{m.get('dev_phase_pct', 0):>5.1f}% "
             f"{m.get('ror_at_fc', 0):>6.1f} "
-            f"{m.get('heat_adjustments', 0):>5}"
+            f"{m.get('heat_adjustments', 0):>5} "
+            f"{_fc_offset_cell(m):>6}"
         )
         lines.append(_box_row(row, "", w))
 

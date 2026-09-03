@@ -16,6 +16,16 @@ from statistics import mean
 # figure is wrong). Not a taste target — a physical safety ceiling.
 SAFETY_EJECT_BT = 408
 
+# Curve-based first-crack detection looks for the steam-release RoR crash
+# inside this BT band. It is a prior: on this machine every by-ear FC mark
+# (13 roasts, three beans) fell between 358F and 366F, and outside the band
+# the late-development RoR nosedive (~380F) looks identical to the crack.
+FC_DETECT_BT_BAND = (350, 372)
+# The crash is measured as the RoR change over this many seconds.
+FC_DETECT_DROP_SPAN = 20
+# A mark this far (seconds) from the curve's crash is flagged as suspect.
+FC_MARK_TOLERANCE = 30
+
 
 def get_phase_percentages(computed):
     """Calculate drying/maillard/development phase percentages.
@@ -395,6 +405,119 @@ def build_curve_series(data, step=30):
     return rows
 
 
+def detect_fc_from_curve(data, band=FC_DETECT_BT_BAND):
+    """Locate first crack from the BT curve alone and grade the operator's mark.
+
+    First crack releases steam, which cools the probe: the RoR drops 3-7
+    F/min within ~20s of crack onset on this machine (seen on all 13 logged
+    roasts). This finds the steepest sustained RoR drop while BT is inside
+    `band` and reports how far the operator's FCs mark sits from it. On a
+    quiet bean the mark can drift 20-40s; this is the after-the-fact check.
+
+    Honest limits: the band is itself a fixed-temperature prior, the drop is
+    small against a curve that is already falling, and heater cuts made
+    60-90s earlier produce dips of similar size. Validated on this roaster's
+    own logs: median offset +4s, 85% of marks within 30s. Treat it as a
+    consistency check on the mark, not ground truth.
+
+    Args:
+        data: Extracted roast data from roast_parser.extract_roast_data().
+        band: (low_F, high_F) BT window to search.
+
+    Returns:
+        Dict with detected_time (rel. to CHARGE), detected_bt, ror_drop
+        (F/min change over FC_DETECT_DROP_SPAN seconds, negative), mark_time
+        (rel. to CHARGE, or None if FC was not marked), offset (detected -
+        mark seconds, or None), mark_suspect (bool), and a details string —
+        or None when the curve never enters the band before DROP.
+    """
+    bt = data.get("bt", [])
+    timex = data.get("timex", [])
+    timeindex = data.get("timeindex", [])
+    if len(bt) < 10 or len(timex) < 10 or len(timeindex) < 7:
+        return None
+
+    charge_idx = max(timeindex[0], 0)
+    drop_idx = timeindex[6] if timeindex[6] > 0 else len(bt) - 1
+    drop_idx = min(drop_idx, len(bt) - 1, len(timex) - 1)
+    fc_idx = timeindex[2] if len(timeindex) > 2 and timeindex[2] > 0 else None
+    if drop_idx <= charge_idx:
+        return None
+
+    # Same interval-derived BT smoothing and 30s RoR window as the rest of
+    # the RoR analysis, plus a light smoothing of the RoR itself so a single
+    # quantization step in BT doesn't masquerade as the crash.
+    deltas = [timex[i] - timex[i - 1]
+              for i in range(charge_idx + 1, min(charge_idx + 50, len(timex)))]
+    deltas = [d for d in deltas if d > 0]
+    interval = sorted(deltas)[len(deltas) // 2] if deltas else 2.0
+    window = max(3, round(30.0 / interval))
+    smooth_half = max(1, round(5.0 / interval))
+    span = max(2, round(FC_DETECT_DROP_SPAN / interval))
+
+    n = len(bt)
+    bt_s = []
+    for i in range(n):
+        lo = max(0, i - smooth_half)
+        hi = min(n, i + smooth_half + 1)
+        bt_s.append(sum(bt[lo:hi]) / (hi - lo))
+    ror = [None] * n
+    for i in range(window, n):
+        dt = timex[i] - timex[i - window]
+        if dt > 0:
+            ror[i] = (bt_s[i] - bt_s[i - window]) / dt * 60
+    ror_s = [None] * n
+    for i in range(n):
+        vals = [r for r in ror[max(0, i - smooth_half):i + smooth_half + 1] if r is not None]
+        ror_s[i] = sum(vals) / len(vals) if vals else None
+
+    low, high = band
+    best_idx, best_drop = None, 0.0
+    for i in range(charge_idx + window, drop_idx - span):
+        if not (low <= bt[i] <= high):
+            continue
+        if ror_s[i] is None or ror_s[i + span] is None:
+            continue
+        drop = ror_s[i + span] - ror_s[i]
+        if drop < best_drop:
+            best_idx, best_drop = i, drop
+    if best_idx is None:
+        return None
+
+    charge_time = timex[charge_idx]
+    detected_time = timex[best_idx] - charge_time
+    result = {
+        "detected_time": round(detected_time),
+        "detected_bt": round(bt[best_idx], 1),
+        "ror_drop": round(best_drop, 1),
+        "mark_time": None,
+        "offset": None,
+        "mark_suspect": False,
+    }
+    if fc_idx is not None and fc_idx < len(timex):
+        mark_time = timex[fc_idx] - charge_time
+        offset = detected_time - mark_time
+        result["mark_time"] = round(mark_time)
+        result["offset"] = round(offset)
+        result["mark_suspect"] = abs(result["offset"]) > FC_MARK_TOLERANCE
+        if abs(offset) <= 5:
+            where = "right at your mark"
+        elif offset < 0:
+            where = f"{abs(round(offset))}s before your mark"
+        else:
+            where = f"{round(offset)}s after your mark"
+        result["details"] = (
+            f"curve shows the FC crash at {_fmt_time(detected_time)} "
+            f"({result['detected_bt']:.0f}F, RoR {best_drop:+.1f} F/min), {where}"
+        )
+    else:
+        result["details"] = (
+            f"FC not marked; curve shows the FC crash at {_fmt_time(detected_time)} "
+            f"({result['detected_bt']:.0f}F, RoR {best_drop:+.1f} F/min)"
+        )
+    return result
+
+
 def extract_metrics(data):
     """Extract all relevant metrics from roast data.
 
@@ -451,6 +574,10 @@ def extract_metrics(data):
 
         # RoR smoothness (phase-segmented, with heat correlation)
         "ror_smoothness": assess_ror_smoothness(data, heat_adj_count),
+
+        # Curve-detected first crack vs the operator's mark (None if the
+        # curve never reached the FC band)
+        "fc_check": detect_fc_from_curve(data),
 
         # Energy
         "auc": computed.get("AUC", 0),

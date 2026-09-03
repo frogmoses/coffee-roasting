@@ -128,6 +128,7 @@ def select_prior_roasts(history, roast_id, title, roast_date, batch_nr, limit=3)
             "fc_crash": ror.get("fc_crash", False),
             "fc_flick": ror.get("fc_flick", False),
             "ror_rising": ror.get("ror_rising", False),
+            "fc_offset": (metrics.get("fc_check") or {}).get("offset"),
             "next_roast": entry.get("next_roast", []),
             "cupping_notes": entry.get("cupping_notes", ""),
         })
