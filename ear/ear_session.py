@@ -29,8 +29,10 @@ from crack_detector import ClickDetector, FirstCrackTracker, DETECTOR_DEFAULTS, 
 
 SCHEMA_VERSION = 1
 
-# Arm the FC rule this long after CHARGE if Artisan never sends DRY
-ARM_FALLBACK_S = 300.0
+# Arm the FC rule this long after CHARGE if Artisan never sends DRY. DRY
+# lands 6-7 minutes in on this machine, so the fallback must come later or
+# it pre-empts the DRY event (it did on the first live day at 300 s).
+ARM_FALLBACK_S = 480.0
 
 
 def _env_float(name, default):
@@ -243,11 +245,16 @@ class EarSession:
         if not save_path.exists():
             print(f"  Warning: Artisan save dir not found: {save_path}")
             return False
+        # Only a file written during THIS session counts: on the first live
+        # day the newest .alog at OFF time was still the previous roast's
+        # (Artisan writes the new one a few seconds after sending OFF), and
+        # every sidecar got linked one roast back.
+        since = self.charge_epoch or (self.capture.start_epoch if self.capture else None) or time.time() - 3600
         last_mtime = None
-        for _ in range(6):
-            alogs = list(save_path.glob("*.alog"))
-            if alogs:
-                newest = max(alogs, key=lambda p: p.stat().st_mtime)
+        for _ in range(30):
+            fresh = [p for p in save_path.glob("*.alog") if p.stat().st_mtime >= since]
+            if fresh:
+                newest = max(fresh, key=lambda p: p.stat().st_mtime)
                 mtime = newest.stat().st_mtime
                 if mtime == last_mtime:
                     try:
@@ -261,7 +268,7 @@ class EarSession:
                         pass  # still being written; retry
                 last_mtime = mtime
             time.sleep(1)
-        print("  Warning: could not link a freshly written .alog")
+        print("  Warning: no .alog written since this session started; not linked")
         return False
 
     def _build_sidecar(self):

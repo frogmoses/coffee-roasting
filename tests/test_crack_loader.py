@@ -103,7 +103,9 @@ def test_reanchor_from_roast_epoch_when_charge_never_arrived(tmp_path):
     path = _write_crack(tmp_path, "2026-09-06_1000", cracks=cracks, fc=fc, charge_epoch=None,
                         armed={"elapsed": 300.0, "source": "manual"})
     data = json.loads(path.read_text())
-    roast = _roast_data(roast_epoch=CHARGE_EPOCH)
+    # roastepoch is ON time; CHARGE is at timex[timeindex[0]] seconds after it
+    roast = _roast_data(roast_epoch=CHARGE_EPOCH - 150)
+    roast["timex"] = [150.0 + i * 2 for i in range(400)]
     assert anchor_charge_epoch(data, roast) == CHARGE_EPOCH
     audio = extract_audio_data(data, roast)
     assert audio["detected_time"] == 590 and audio["offset"] == -10

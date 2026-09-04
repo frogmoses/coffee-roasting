@@ -369,7 +369,7 @@ retired; don't run both).
 **Session (`ear_session.py`).** Artisan connects on ON -> recording starts
 (48 kHz mono int16 WAV via stdlib `wave`; ~86 MB per 15 min) so the drum/fan
 floor is established before CHARGE. Events give the roast clock (CHARGE =
-`charge_epoch`), arm the FC rule (DRY; fallback CHARGE+300 s or `--arm-at`),
+`charge_epoch`), arm the FC rule (DRY; fallback CHARGE+480 s or `--arm-at`),
 mark DROP (sidecar saved + pushed; recording stops at DROP+`EAR_POST_DROP_S`
 and the WAV is pushed), and OFF links the freshly written `.alog`
 (`_link_alog`, with a retry until the file parses with a stable mtime) then
@@ -398,8 +398,11 @@ accepted as a crack if 1 <= dur <= 30 ms and spectral flatness at its peak
 rejected long/tonal bursts blank onsets for 300 ms; onsets within 40 ms merge.
 Reported onset = center of the first hot frame. `detect_cracks()` is the
 offline wrapper over the same `ClickDetector.feed()` path (block-size parity
-is tested). `FirstCrackTracker(n=4, window_s=20, min_elapsed_s=240)` declares
-FC once when n accepted cracks fall in the rolling window; onset = first
+is tested). `FirstCrackTracker(n=7, window_s=20, min_elapsed_s=480)` declares
+FC once when n accepted cracks fall in the rolling window (tuned 2026-09-04:
+the drum makes 3-4 clicks/min at any heater setting, FC runs 20-30/min;
+4-in-20s fired on that trickle 1-2 min early, 7-in-20s matched the curve
+crash within 2-6 s on all three roasts); onset = first
 crack in that window; pre-arm cracks are recorded but never counted
 (drying-phase tumble). Second crack is not distinguished (declares once; SC is
 minutes later). `DETECTOR_DEFAULTS` are starting points — `thresh_db`, `band`,

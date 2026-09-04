@@ -40,10 +40,15 @@ DETECTOR_DEFAULTS = {
 }
 
 # First-crack declaration rule
+# Tuned on the first live day (three Rwanda roasts, 2026-09-04): the drum
+# produces a steady 3-4 clicks/min at every heater setting, first crack runs
+# 20-30/min. Four-in-20s fired on the trickle 1-2 minutes early; seven-in-20s
+# landed within 2-6 s of the curve's crash on all three (and 49 s after an
+# early by-ear mark on the first, which the curve also called late).
 FC_RULE_DEFAULTS = {
-    "n": 4,                  # accepted cracks ...
+    "n": 7,                  # accepted cracks ...
     "window_s": 20.0,        # ... inside this rolling window declares FC
-    "min_elapsed_s": 240.0,  # never declare before this many seconds after CHARGE
+    "min_elapsed_s": 480.0,  # never declare before this many seconds after CHARGE
 }
 
 _EPS = 1e-12

@@ -48,15 +48,24 @@ def anchor_charge_epoch(crack_data, roast_data):
     """Wall-clock epoch of CHARGE for this session.
 
     Prefer the sidecar's own charge_epoch (set from Artisan's CHARGE
-    message). Fall back to the .alog's roastepoch, which Artisan stamps at
-    the start of the roast — treated as CHARGE here; the first live session
-    checks that assumption (ear/tune.py prints the difference).
+    message). Fall back to the .alog's roastepoch plus the CHARGE sample's
+    timex: roastepoch is Artisan's ON time (verified on the first live day,
+    CHARGE landed 135-165 s after it), and timex counts from ON.
     """
     epoch = (crack_data or {}).get("charge_epoch")
     if epoch:
         return float(epoch)
     roast_epoch = (roast_data or {}).get("roast_epoch") or 0
-    return float(roast_epoch) if roast_epoch else None
+    if not roast_epoch:
+        return None
+    # Measured on the first live day: roastepoch is Artisan's ON time, and
+    # CHARGE came 135-165 s later — timex[charge_idx] seconds, since timex
+    # counts from ON.
+    timex = (roast_data or {}).get("timex") or []
+    timeindex = (roast_data or {}).get("timeindex") or []
+    charge_idx = max(timeindex[0], 0) if timeindex else 0
+    offset = timex[charge_idx] if charge_idx < len(timex) else 0.0
+    return float(roast_epoch) + float(offset)
 
 
 def _elapsed(crack, charge_epoch):
