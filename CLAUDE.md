@@ -22,6 +22,11 @@ Always use the wrapper script (injects secrets):
 run_roast-analyzer analyze.py <command>
 ```
 
+Roaster side (the ear, see "Ear" below), on the roaster laptop:
+```bash
+run_ear ear.py listen --bean "<bean>" --record-only
+```
+
 ## Project Structure
 
 ```
@@ -56,6 +61,7 @@ coffee-roasting/
 │   ├── artisan-sync.sh         # rsync to dev machine
 │   ├── artisan-sync.conf.example  # Config template (copy to .conf, fill in)
 │   └── artisan-sync.service    # systemd user unit
+├── docs/                   # Printable session sheets (rwanda-contrast-session.html; also published as an artifact)
 ├── roast-logs/             # .alog and .png files from Artisan (gitignored)
 ├── roast_history.json      # Persistent analysis results (gitignored)
 └── reference/              # Hottop PDF manuals (gitignored)
@@ -67,15 +73,15 @@ Dispatch table at the bottom of `analyze.py`. Each command maps to a `cmd_*` fun
 
 | Command | Function | Key flow |
 |---------|----------|----------|
-| `full` | `cmd_full()` `:321` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
-| `scan` | `cmd_scan()` `:110` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `enrich_trajectory_with_temps()` -> `select_prior_roasts()` -> `analyze_roast()` -> `save_history()` |
-| `show` | `cmd_show()` `:216` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
-| `compare` | `cmd_compare()` `:234` | `compare_roasts()` -> `display_roast_comparison()` |
-| `recommend` | `cmd_recommend()` `:267` | `display_recommendations()` -> `display_next_roast()` (recs + `next_roast` read from cached history) |
+| `full` | `cmd_full()` | `cmd_scan()` -> `display_roast_summary()` -> `display_bean_profile()` -> `display_recommendations()` -> `display_next_roast()` -> `display_trend()` |
+| `scan` | `cmd_scan()` | `scan_roast_logs()` -> `parse_alog()` -> `extract_roast_data()` -> `lookup_bean()` -> `match_sentinel_to_roast()` -> `enrich_trajectory_with_temps()` -> `match_crack_to_roast()` -> `extract_audio_data()` -> `select_prior_roasts()` -> `analyze_roast()` -> `save_history()` |
+| `show` | `cmd_show()` | `resolve_roast_id()` -> `display_roast_summary()` -> `display_bean_profile()` |
+| `compare` | `cmd_compare()` | `compare_roasts()` -> `display_roast_comparison()` |
+| `recommend` | `cmd_recommend()` | `display_recommendations()` -> `display_next_roast()` (recs + `next_roast` read from cached history) |
 | `cupping` | `cmd_cupping()` | Read/write `cupping_notes` in history — free text (`--notes`), guided intake (`--intake`), or `--intake-json`; on write, `refresh_recommendations()` re-runs the LLM with the notes (fails soft, keeps cached recs) |
 | `plan` | `cmd_plan()` | `build_contrast_plan()` -> `display_contrast_plan()`; deterministic, no LLM/network |
-| `list` | `cmd_list()` `:362` | `get_sorted_analyses()` -> `display_roast_list()` |
-| `bean` | `cmd_bean()` `:369` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
+| `list` | `cmd_list()` | `get_sorted_analyses()` -> `display_roast_list()` |
+| `bean` | `cmd_bean()` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
 
 CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n`, `--intake/-i`, `--intake-json` (cupping), `--dev` (plan; comma-separated FC->DROP seconds in roasting order, default `150,90,210`), `--debug` (global; print traceback on errors).
 
@@ -94,8 +100,9 @@ Scan behaviors:
 .alog file
   -> roast_parser.parse_alog()           # ast.literal_eval() -> raw dict
   -> roast_parser.extract_roast_data()   # pull fields, decode events
-  -> roast_metrics.extract_metrics()     # calculate phase %, temps, RoR, heat changes
-  -> roast_metrics.add_visual_metrics()  # merge sentinel data if available
+  -> roast_metrics.extract_metrics()     # phase %, temps, RoR, heat changes, fc_check (curve-detected FC)
+  -> roast_metrics.add_visual_metrics()  # merge sentinel data if available (retired sentinels)
+  -> roast_metrics.add_audio_metrics()   # merge the ear's fc_audio if a crack sidecar matched
   -> roast_narrative.build_control_timeline() # reconstruct heater/fan moves
   -> llm_recommender.generate_llm_recommendations()  # claude-opus-4-8 -> recs + next_roast
   -> roast_display.*                     # Unicode box-drawing output
@@ -197,9 +204,9 @@ moves) and reduced it to a single `heat_adjustments` integer.
 
 ### Flow
 
-`roast_analysis.analyze_roast()` `:18` builds metrics, then calls
+`roast_analysis.analyze_roast()` builds metrics, then calls
 `llm_recommender.generate_llm_recommendations(metrics, data, bean_profile,
-cupping_notes=, warnings=, prior_roasts=)` `llm_recommender.py:325`. That function:
+cupping_notes=, warnings=, prior_roasts=)` `llm_recommender.py`. That function:
 
 1. Reconstructs the CHARGE->DROP control timeline from `data` via
    `roast_narrative.build_control_timeline()` / `format_narrative()`.
@@ -349,8 +356,12 @@ which `set -a; source`s `~/CodeProjects/ear/ear.conf` (no secrets, so it lives
 beside the code like `log-sync/artisan-sync.conf`; template
 `ear/ear.conf.example`) and execs `.venv/bin/python` — code reads only
 `os.environ`. Both were created over ssh on 2026-09-04.
-Mic: Smart Clippy EM272Z1 (plug-in-power capsule) through a Sound Blaster
-Play! 3 USB card (ALSA card "S3"). PipeWire's default source is the laptop's
+Mic: Smart Clippy EM272Z1 (plug-in-power capsule, TRS plug) through a Sound
+Blaster Play! 3 USB card (ALSA card 1 "S3") — in the card's **4-pole headset
+jack**; the mono mic jack reads a dead -63 dBFS floor with this capsule.
+Capture gain is `amixer -c 1 cset numid=4 45,45` (+22.5 dB); at 100% finger
+snaps clipped. `run_ear ear.py level` prints per-second RMS/peak/>3 kHz
+share/cracks for jack and gain checks. PipeWire's default source is the laptop's
 internal mic, so `EAR_DEVICE=Sound Blaster` selects the card by name. The ear
 is now Artisan's WebSocket server on 8765 (the GoPro/R1 visual sentinels are
 retired; don't run both).
@@ -365,7 +376,11 @@ and the WAV is pushed), and OFF links the freshly written `.alog`
 re-saves/pushes. Unlike the sentinel, the server stays up after DROP until OFF
 or `EAR_OFF_TIMEOUT_S`, so the UUID link actually lands. `--record-only`
 suppresses alerts (first sessions); `--record-now` starts recording without
-Artisan and treats recording start as CHARGE (bench tests). Ctrl-C finalizes.
+Artisan and treats recording start as CHARGE (bench tests); an explicit
+`--arm-at N` also lowers the rule's `min_elapsed_s` to N so `--arm-at 0`
+bench runs can declare. `run_ear` lets variables already in the environment
+override `ear.conf`, so inline overrides such as `EAR_CAPTURES_DIR=/tmp/x`
+work. Ctrl-C finalizes.
 Sidecar `ear/captures/crack_YYYY-MM-DD_HHMM.json`: session_id, bean, roast_uuid,
 batch_nr, mode, artisan_events (lowercase, s since CHARGE), charge_epoch,
 charge_source, armed {elapsed, source}, capture {device, sample_rate,
@@ -425,8 +440,8 @@ offsets, re-anchoring, metrics merge, prior roasts, and the scan seam.
 Box width: 72 for recommendations/comparisons/next-roast, 62 for summaries/trends.
 
 Key functions:
-- `_visual_summary()` `:55` — one-line trajectory interpretation (steady/stalled/rapid jump)
-- `display_roast_summary()` `:95` — temps (+ CHARGE warning if `charge_bt` is missing), phases with time+RoR annotation, RoR, phase-grouped visual scores, cupping notes. The weight line shows `in -> out (X% loss)` once `weight_out` is entered, otherwise just `in`.
+- `_visual_summary()` — one-line trajectory interpretation (steady/stalled/rapid jump)
+- `display_roast_summary()` — temps (+ CHARGE warning if `charge_bt` is missing), phases with time+RoR annotation, RoR, phase-grouped visual scores, cupping notes. The weight line shows `in -> out (X% loss)` once `weight_out` is entered, otherwise just `in`.
 - `display_bean_profile()` — cupping notes, flavor bars, cupping chart scores
 - `display_recommendations()` — priority legend + wrapped rec text; uses `full_text` when `verbose=True`
 - `display_next_roast()` — numbered action items
@@ -458,11 +473,11 @@ Artisan saves roast data as Python dict literals (not JSON). Parsed with `ast.li
 
 ### Roast ID format
 
-Built in `roast_parser.py:69`: `{batch_nr}_{title}_{roastisodate}` (e.g., `1_Ethiopia Gerba Hechere_2026-02-06`).
+Built in `roast_parser.py`: `{batch_nr}_{title}_{roastisodate}` (e.g., `1_Ethiopia Gerba Hechere_2026-02-06`).
 
 ### Computed fields used
 
-Extracted in `roast_metrics.extract_metrics()` `:328`:
+Extracted in `roast_metrics.extract_metrics()`:
 - Phase times: `totaltime`, `dryphasetime`, `midphasetime`, `finishphasetime`
 - Temperatures: `CHARGE_BT`, `CHARGE_ET`, `TP_BT`, `TP_time`, `DRY_BT`, `FCs_BT`, `FCs_time`, `DROP_BT`, `DROP_time`, `MET`
 - RoR: `fcs_ror`, `dry_phase_ror`, `mid_phase_ror`, `finish_phase_ror`, `total_ror`
@@ -471,14 +486,14 @@ Extracted in `roast_metrics.extract_metrics()` `:328`:
 
 ### Extracted roast data fields
 
-`extract_roast_data()` (`roast_parser.py:35`) also pulls: `title`, `roastbatchnr`, `roastUUID`, `weight`, `machinesetup`/`roastertype`, `mode` (F/C), `roastingnotes`, `cuppingnotes`, `flavors`/`flavorlabels`, `heavyFC`, `lowFC`, `oily`, `tipping`, `scorching`.
+`extract_roast_data()` (`roast_parser.py`) also pulls: `title`, `roastbatchnr`, `roastUUID`, `weight`, `machinesetup`/`roastertype`, `mode` (F/C), `roastingnotes`, `cuppingnotes`, `flavors`/`flavorlabels`, `heavyFC`, `lowFC`, `oily`, `tipping`, `scorching`.
 
 ## find-coffee Integration
 
 - API: `GET /api/purchased_coffees?name=<search>` — case-insensitive LIKE match
 - Returns: cupping_notes, 12 flavor scores (floral, berry, citrus, honey, sugar, caramel, fruit, cocoa, nut, rustic, spice, body), 10 cupping chart scores (dry_fragrance, wet_aroma, brightness, flavor, body, finish, sweetness, clean_cup, complexity, uniformity)
 - `coffee_lookup.py` checks if find-coffee is running, starts it via `FIND_COFFEE_WRAPPER` if not (on the port parsed from `FIND_COFFEE_URL`, default 5000), queries, then kills the process (only if we started it)
-- Fallback search: if no results, retries with first 2 words of the bean name (`coffee_lookup.py:151`)
+- Fallback search: if no results, retries with first 2 words of the bean name (`coffee_lookup.py`)
 - Env vars (all required for bean lookup to work, no defaults):
   - `FIND_COFFEE_URL` — API base URL (e.g., `http://localhost:5000`)
   - `FIND_COFFEE_WRAPPER` — path to wrapper script that starts the server
@@ -486,28 +501,35 @@ Extracted in `roast_metrics.extract_metrics()` `:328`:
 
 ## Full Roasting Pipeline
 
-This project is the analysis endpoint for a multi-machine pipeline. Data flows from the roaster machine to this dev machine via two parallel paths: Artisan roast logs and sentinel visual captures.
+This project is the analysis endpoint for a multi-machine pipeline. Three
+paths carry data from the roaster laptop to this dev machine: Artisan roast
+logs (always), the ear's crack sidecars + WAVs (live since Sept 2026), and the
+visual sentinels' JSON (retired — the GoPro/R1 code paths still work, but
+outdoor lighting made the scoring unreliable and nothing runs them now; the
+ear owns Artisan's WebSocket port 8765).
 
 ### Pipeline overview
 
 ```
-ROASTER MACHINE                           DEV MACHINE
-─────────────────                         ───────────────
-Artisan (.alog)                           coffee-roasting/roast-logs/
-  │                                           ↑
-  ├─ inotifywait ──→ artisan-sync.sh ──rsync──┘
-  │  (log-sync/)
+ROASTER MACHINE                              DEV MACHINE
+─────────────────                            ───────────────
+Artisan (.alog)                              coffee-roasting/roast-logs/
+  │                                              ↑
+  ├─ inotifywait ──→ artisan-sync.sh ──rsync─────┘
+  │  (log-sync/, systemd user service)
   │
-  └─ OFF button ──ws──→ Sentinel reads .alog
-                         extracts roastUUID + batch_nr
+  └─ button events (ON/CHARGE/DRY/FCs/DROP/OFF)
+       │ ws://127.0.0.1:8765
+       ▼
+Ear (~/CodeProjects/ear, run_ear)            coffee-roasting/ear/captures/
+  mic → click detector → crack_*.json + .wav     ↑
+  └─ rsync at DROP / OFF ──────────────────────┘
+     OFF: reads newest .alog → roastUUID        crack_loader.py matches by UUID,
+                                                else date/closest HH:MM
+                                                → metrics["fc_audio"]
 
-Sentinel (JSON)                           gopro/captures/ or r1-eye/captures/
-  │                                           ↑
-  └─ _push_log() ──────────────────rsync──────┘
-     (in sentinel.py)                     sentinel_loader.py reads from here
-                                          via SENTINEL_CAPTURES_DIRS env var
-                                          matches by UUID (deterministic)
-                                          or date/time (fallback)
+(retired) Sentinel JSON ── rsync ──→ gopro/captures/ or r1-eye/captures/
+                                     sentinel_loader.py via SENTINEL_CAPTURES_DIRS
 ```
 
 ### Component 1: Artisan log sync (`log-sync/`)
@@ -527,9 +549,9 @@ Config vars (in `artisan-sync.conf`):
 - `LOCAL_PATH` — Artisan's save directory on the roaster
 - `FILE_PATTERN` — `*.alog *.png`
 
-### Component 2: Sentinel visual capture (external projects)
+### Component 2: Sentinel visual capture (external projects — retired)
 
-Two interchangeable camera systems produce identical sentinel JSON files during roasting. Both run on the **roaster machine** alongside Artisan.
+Two interchangeable camera systems produce identical sentinel JSON files during roasting. Both ran on the **roaster machine** alongside Artisan; neither is used now (see above), and they must not run while the ear is up (same port).
 
 | Project | Device | Capture method | Repo |
 |---------|--------|---------------|------|
@@ -596,13 +618,19 @@ Development score scale (1-10): green → pale yellow → tan → cinnamon → c
 
 Sentinel JSON files are parsed once and cached by path+mtime (`_sentinel_cache`), since UUID matching scans every file per roast. `detect_plateau(trajectory, min_run=3)` is the shared stall detector used by `_visual_summary()` (display); the analysis-side visual reasoning now lives in the LLM prompt (visual trajectory + uniformity are passed via `llm_recommender._visual_block()`).
 
-### Sentinel matching logic (`match_sentinel_to_roast` `:44`)
+### Session matching logic (`sentinel_loader.match_session_to_roast`)
 
-1. **UUID match (deterministic)**: if the `.alog` has a `roastUUID`, scan all sentinel JSONs for a matching `roast_uuid` field — this is an exact 1:1 link
-2. **Date match (fallback)**: extract date from sentinel `session_id` (first 10 chars), compare against `.alog` `roastisodate`
-3. **Time tiebreak**: multiple matches on same date → closest time wins (HHMM comparison)
+Shared by the sentinel loader and `crack_loader.py`; both session kinds name
+files `<prefix>YYYY-MM-DD_HHMM.json` (`find_session_logs(dirs, prefix)`,
+`load_json_cached(path)` with an mtime cache):
+
+1. **UUID match (deterministic)**: if the `.alog` has a `roastUUID`, scan all session JSONs for a matching `roast_uuid` field — an exact 1:1 link
+2. **Date match (fallback)**: `session_id[:10]` vs the `.alog` `roastisodate`
+3. **Time tiebreak**: multiple matches on the same date → closest HH:MM wins (`roast_time[:5]`, since `.alog` times carry seconds)
 4. **Last resort**: latest session on that date
-5. If both gopro and r1-eye sessions exist for the same roast, whichever matches first (UUID or closest time) wins — no modality distinction or merging
+5. If both gopro and r1-eye sessions exist for the same roast, whichever matches first wins — no merging
+
+`match_sentinel_to_roast()` and `match_crack_to_roast()` are thin wrappers over this.
 
 ### Visual metrics added to analysis
 
@@ -615,7 +643,7 @@ Sentinel JSON files are parsed once and cached by path+mtime (`_sentinel_cache`)
 | `visual_score_count` | Count of scored captures | Number of trajectory points |
 | `visual_final_color` | Last observation's `color_assessment` | Text description |
 
-Trajectory points are enriched with BT/ET from the `.alog` by `enrich_trajectory_with_temps()` `:317`. These temperatures are passed into the LLM prompt (`_visual_block()`) so visual advice has actionable BT context.
+Trajectory points are enriched with BT/ET from the `.alog` by `enrich_trajectory_with_temps()`. These temperatures are passed into the LLM prompt (`_visual_block()`) so visual advice has actionable BT context.
 
 ### Visual reasoning
 
@@ -648,7 +676,7 @@ anymore. `detect_plateau()` is still used display-side by `_visual_summary()`.
 - `metrics["fc_check"]` (curve-detected FC vs mark) and `metrics["fc_audio"]` (ear verdict; only when a sidecar matched)
 - `source_file` (path to .alog)
 
-Loaded/saved by `load_history()`/`save_history()` in `analyze.py:47-62`.
+Loaded/saved by `load_history()`/`save_history()` in `analyze.py`.
 
 ## Coding Conventions
 
@@ -663,3 +691,9 @@ Loaded/saved by `load_history()`/`save_history()` in `analyze.py:47-62`.
 - Run tests with `uv run pytest tests/` — pure-function tests over synthetic
   roast curves; no network or real roast-logs needed. The scan/CLI tests stub
   `roast_analysis.generate_llm_recommendations` so they never call the API.
+  `uv sync --extra ear` installs numpy/sounddevice so the ear detector tests
+  run (they `importorskip` numpy otherwise). The analyzer itself stays
+  numpy-free; only `ear/` uses numpy.
+- Never give a non-secret settings file the dot-env extension (the ear's
+  settings file is `ear.conf` for this reason): the secrets hook blocks any
+  shell command whose text contains that extension, file names included.
