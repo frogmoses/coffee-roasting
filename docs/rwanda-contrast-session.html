@@ -181,17 +181,17 @@
   <section>
     <div class="section-head">
       <div class="eyebrow">Microphone</div>
-      <h2>Run the ear in record-only mode on all three</h2>
+      <h2>Run the ear with alerts on for all three</h2>
     </div>
-    <p>The ear records every batch and logs the clicks it hears. It does not mark anything and it does not beep. You still press FCs by ear, using the rule below. Afterward the analyzer shows where the microphone put first crack next to your mark, and these three recordings are what the detector gets tuned on.</p>
+    <p>The ear records every batch, logs the clicks it hears, and when it counts seven cracks inside 20 seconds it prints a bold <strong>FIRST CRACK</strong> line in its own terminal and rings the bell. The alert comes from the ear, not from Artisan, and it marks nothing in Artisan. You still press FCs. The alert fires about 15 to 20 seconds after the burst actually starts, so it is a confirmation, not the earliest signal; the analyzer records the true onset afterwards regardless of when you pressed.</p>
     <ol class="steps">
       <li><strong>Already set up on the roaster:</strong> <code>~/.local/bin/run_ear</code> and its settings in <code>~/CodeProjects/ear/ear.conf</code> (device, paths, rsync target). Nothing to configure on the day. Do not start the GoPro sentinel; both want port 8765.</li>
       <li>Clip the capsule to the plastic front housing beside the bean window, foam windscreen on, pointed away from the fan exhaust. Route the USB cable away from the Hottop's mains lead.</li>
       <li>Before pressing ON in Artisan, in a terminal on the roaster:
-        <pre>cd ~/CodeProjects/ear &amp;&amp; run_ear ear.py listen --bean "Rwanda Rusizi Gaseke" --record-only</pre>
+        <pre>cd ~/CodeProjects/ear &amp;&amp; run_ear ear.py listen --bean "Rwanda Rusizi Gaseke"</pre>
         Then press ON. The status box should say <strong>Artisan: connected</strong> and <strong>Rec:</strong> with a file name.</li>
       <li>With the drum running and no beans, set the capture gain in <code>alsamixer -c 1</code> so the <strong>Peak</strong> line reads about <strong>-30 dBFS</strong>. If the box ever shows <strong>CLIPPING</strong>, turn the gain down before the next batch.</li>
-      <li>Leave it running through OFF. The sidecar and WAV push to the dev machine on their own. Start a fresh <code>listen</code> for each batch, after Artisan's OFF and before the next ON.</li>
+      <li>Keep the ear's terminal where you can see and hear it. Leave it running through OFF; the sidecar and WAV push to the dev machine on their own. Start a fresh <code>listen</code> for each batch, after Artisan's OFF and before the next ON.</li>
       <li>If capture fails, the box says <strong>Rec: FAILED</strong>. Roast anyway; the batch still counts. Run <code>run_ear ear.py devices</code> afterward to see what PortAudio found.</li>
     </ol>
   </section>
@@ -233,7 +233,7 @@
     </div>
     <div class="callout">
       <div class="eyebrow">Marking FC on a quiet bean</div>
-      <p>This Rwanda cracks softly. Mark FC at the <strong>first distinct crack, or at 363F, whichever comes first</strong>. Do not wait for a rolling chorus. You have marked it between 361F and 366F on every Rwanda roast, so the temperature is your steadiest cue. Set two Artisan alarms: 356F to start listening, 363F as the fallback mark. A five degree miss is about 25 seconds, and the same rule on all three batches keeps the contrast real.</p>
+      <p>This Rwanda cracks softly. Mark FC at the <strong>first distinct crack, or at 363F, whichever comes first</strong>. Do not wait for a rolling chorus. Two additions from the first session: if the ear's alert fires before you have marked, <strong>mark immediately</strong>; and <strong>do not mark below about 355F</strong> unless the alert has already fired. Every real first crack on this bean has landed between 358F and 366F, and the one early mark so far was at 349F. Set two Artisan alarms: 356F to start listening, 363F as the fallback mark. The same rule on all three batches keeps the contrast real.</p>
     </div>
     <p class="a" style="color: var(--ink-2)">FC has landed anywhere from 9:16 to 10:36 on this recipe. That spread is the machine, not you. Time from the mark, never from charge. A drop of 3 to 7 F/min in the RoR within 20 seconds of your mark means you marked well.</p>
   </section>
