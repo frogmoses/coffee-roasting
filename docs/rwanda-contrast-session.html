@@ -163,23 +163,6 @@
 
   <section>
     <div class="section-head">
-      <div class="eyebrow">Your two questions</div>
-      <h2>Same recipe to first crack, then diverge</h2>
-    </div>
-    <div class="qa">
-      <div>
-        <p class="q">Are we keeping FC the same and only extending development?</p>
-        <p class="a"><strong>Yes.</strong> Every move through first crack is identical, including the heater at 60% from 7:30 onward. Do not add moves after FC. The only thing that changes is the stopwatch from FC to DROP. Drop temperature is an outcome, and the projected drops below exist only to confirm the long batch stays clear of the 408F eject. If FC comes late on a batch, that is fine: still count from the moment you mark it.</p>
-      </div>
-      <div>
-        <p class="q">Can an extended warm-up compensate for later batches running hotter?</p>
-        <p class="a"><strong>Partly, and the direction matters.</strong> Your logs show later batches on the same day reach FC about 35 seconds sooner, and the environment probe does not predict it: the drum body is what carries the heat, not the air. So make batch 1 look like batch 2 rather than the reverse. Overshoot the empty drum, cool it to the charge point with the heater off, then charge, and use that same cool-then-charge routine between batches so all three start from the same state. Whatever drift is left is absorbed by timing from FC instead of from charge. Artisan's between-batch protocol and follow-background PID can take this over later.</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="section-head">
       <div class="eyebrow">Microphone</div>
       <h2>Run the ear with alerts on for all three</h2>
     </div>
@@ -193,20 +176,6 @@
       <li>With the drum running and no beans, set the capture gain in <code>alsamixer -c 1</code> so the <strong>Peak</strong> line reads about <strong>-30 dBFS</strong>. If the box ever shows <strong>CLIPPING</strong>, turn the gain down before the next batch.</li>
       <li>Keep the ear's terminal where you can see and hear it. Leave it running through OFF; the sidecar and WAV push to the dev machine on their own. Start a fresh <code>listen</code> for each batch, after Artisan's OFF and before the next ON.</li>
       <li>If capture fails, the box says <strong>Rec: FAILED</strong>. Roast anyway; the batch still counts. Run <code>run_ear ear.py devices</code> afterward to see what PortAudio found.</li>
-    </ol>
-  </section>
-
-  <section>
-    <div class="section-head">
-      <div class="eyebrow">Before the first charge</div>
-      <h2>Soak the drum, then keep the gaps fixed</h2>
-    </div>
-    <ol class="steps">
-      <li>Press ON in Artisan at the start of preheat, not at charge, so the warm-up is logged.</li>
-      <li>Preheat with the drum turning and the heater at 100%, and <strong>overshoot to about 370F BT</strong> instead of stopping at 300F. The drum body soaks while the empty drum climbs.</li>
-      <li>Heater 0%, fan 100%, drum on. Let BT fall to 300F. Heater back to 100% and charge batch 1. <strong>Write down the ET reading</strong> at that moment.</li>
-      <li>After each drop, the same routine: heater 0%, fan 100%, drum on, let BT fall to 300F, heater to 100%. Charge when BT is at 300F <strong>and</strong> ET is within about 10F of the batch 1 reading. Waiting for both is the compensation.</li>
-      <li>Name every roast in Artisan before you press ON. Batch #15 went into history as "Roaster Scope" and cannot be grouped with its bean.</li>
     </ol>
   </section>
 
@@ -230,10 +199,6 @@
           <tr class="fc"><td>~9:58</td><td class="num">~363F</td><td><span class="tag coil">FC</span> Mark it. Start the stopwatch here. It reads minutes:seconds, so 2:30 is 150 s</td></tr>
         </tbody>
       </table>
-    </div>
-    <div class="callout">
-      <div class="eyebrow">Marking FC on a quiet bean</div>
-      <p>This Rwanda cracks softly. Mark FC at the <strong>first distinct crack, or at 363F, whichever comes first</strong>. Do not wait for a rolling chorus. Two additions from the first session: if the ear's alert fires before you have marked, <strong>mark immediately</strong>; and <strong>do not mark below about 355F</strong> unless the alert has already fired. Every real first crack on this bean has landed between 358F and 366F, and the one early mark so far was at 349F. Set two Artisan alarms: 356F to start listening, 363F as the fallback mark. The same rule on all three batches keeps the contrast real.</p>
     </div>
     <p class="a" style="color: var(--ink-2)">FC has landed anywhere from 9:16 to 10:36 on this recipe. That spread is the machine, not you. Time from the mark, never from charge. A drop of 3 to 7 F/min in the RoR within 20 seconds of your mark means you marked well.</p>
   </section>
@@ -259,10 +224,6 @@
         <div class="big">FC + 3:30 <small>210 s · drop ~395F</small></div>
         <div class="note">Expect roastier, heavier, less bright. About 13F under the eject. If BT reaches 400F before the timer, drop.</div>
       </div>
-    </div>
-    <div class="callout">
-      <div class="eyebrow">Confound to know about</div>
-      <p>Batch 3 is also the hottest drum of the day, which pushes it slightly darker on top of the longer timer. That bias runs the same direction as the treatment, so it exaggerates the contrast rather than hiding it. Acceptable for a first bracket.</p>
     </div>
   </section>
 
