@@ -34,6 +34,7 @@ from roast_analysis import (
 from cupping_intake import run_intake, normalize_intake, intake_to_text
 from roast_plan import build_contrast_plan, parse_dev_times, DEFAULT_DEV_TIMES
 from roast_display import (
+    format_time,
     display_contrast_plan,
     display_roast_summary,
     display_bean_profile,
@@ -45,6 +46,7 @@ from roast_display import (
 )
 from coffee_lookup import lookup_bean, extract_bean_profile, ensure_server_running, stop_server
 from sentinel_loader import match_sentinel_to_roast, extract_visual_data, enrich_trajectory_with_temps
+from crack_loader import match_crack_to_roast, extract_audio_data
 
 # Paths
 PROJECT_DIR = Path(__file__).parent
@@ -179,6 +181,16 @@ def cmd_scan(args):
                     source = visual_data.get("visual_source", "Sentinel")
                     print(f"  Found {source} visual data: {visual_data['score_count']} captures")
 
+        # Look for the ear's crack sidecar (microphone first-crack detector)
+        audio_data = None
+        if roast_date or roast_uuid:
+            crack = match_crack_to_roast(roast_date, roast_time, roast_uuid)
+            audio_data = extract_audio_data(crack, data)
+            if audio_data:
+                fc_txt = (f"FC by audio at {format_time(audio_data['detected_time'])}"
+                          if audio_data.get("detected_time") is not None else "no FC declared")
+                print(f"  Found audio crack data: {audio_data['crack_count']} cracks, {fc_txt}")
+
         # Cupping notes added via the 'cupping' command live only in history —
         # pass them INTO the analysis (not just restore them after) so a
         # --force re-scan lets the LLM judge the roast against how it tasted
@@ -196,6 +208,7 @@ def cmd_scan(args):
             data, bean_profile, visual_data,
             cupping_notes=preserved_notes or None,
             prior_roasts=prior_roasts,
+            audio_data=audio_data,
         )
         analysis["source_file"] = str(alog_path)
         # The structured intake lives only in history too — carry it over so

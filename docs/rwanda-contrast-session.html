@@ -130,6 +130,7 @@
   .card .note { color: var(--ink-2); font-size: 0.9rem; }
   .card.warn .big { color: var(--warn); }
 
+  .steps pre { margin: 0.4rem 0 0; }
   pre {
     margin: 0;
     background: var(--paper-2);
@@ -175,6 +176,24 @@
         <p class="a"><strong>Partly, and the direction matters.</strong> Your logs show later batches on the same day reach FC about 35 seconds sooner, and the environment probe does not predict it: the drum body is what carries the heat, not the air. So make batch 1 look like batch 2 rather than the reverse. Overshoot the empty drum, cool it to the charge point with the heater off, then charge, and use that same cool-then-charge routine between batches so all three start from the same state. Whatever drift is left is absorbed by timing from FC instead of from charge. Artisan's between-batch protocol and follow-background PID can take this over later.</p>
       </div>
     </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Microphone</div>
+      <h2>Run the ear in record-only mode on all three</h2>
+    </div>
+    <p>The ear records every batch and logs the clicks it hears. It does not mark anything and it does not beep. You still press FCs by ear, using the rule below. Afterward the analyzer shows where the microphone put first crack next to your mark, and these three recordings are what the detector gets tuned on.</p>
+    <ol class="steps">
+      <li><strong>Already set up on the roaster:</strong> <code>~/.local/bin/run_ear</code> and its settings in <code>~/CodeProjects/ear/ear.conf</code> (device, paths, rsync target). Nothing to configure on the day. Do not start the GoPro sentinel; both want port 8765.</li>
+      <li>Clip the capsule to the plastic front housing beside the bean window, foam windscreen on, pointed away from the fan exhaust. Route the USB cable away from the Hottop's mains lead.</li>
+      <li>Before pressing ON in Artisan, in a terminal on the roaster:
+        <pre>cd ~/CodeProjects/ear &amp;&amp; run_ear ear.py listen --bean "Rwanda Rusizi Gaseke" --record-only</pre>
+        Then press ON. The status box should say <strong>Artisan: connected</strong> and <strong>Rec:</strong> with a file name.</li>
+      <li>With the drum running and no beans, set the capture gain in <code>alsamixer -c 1</code> so the <strong>Peak</strong> line reads about <strong>-30 dBFS</strong>. If the box ever shows <strong>CLIPPING</strong>, turn the gain down before the next batch.</li>
+      <li>Leave it running through OFF. The sidecar and WAV push to the dev machine on their own. Start a fresh <code>listen</code> for each batch, after Artisan's OFF and before the next ON.</li>
+      <li>If capture fails, the box says <strong>Rec: FAILED</strong>. Roast anyway; the batch still counts. Run <code>run_ear ear.py devices</code> afterward to see what PortAudio found.</li>
+    </ol>
   </section>
 
   <section>
@@ -276,11 +295,17 @@
       <h2>Feed it back</h2>
     </div>
     <pre>run_roast-analyzer analyze.py scan
+run_roast-analyzer analyze.py show 21     # FC by curve and FC by audio next to your mark
 run_roast-analyzer analyze.py cupping 21 --intake
 run_roast-analyzer analyze.py cupping 22 --intake
 run_roast-analyzer analyze.py cupping 23 --intake
 run_roast-analyzer analyze.py recommend 23</pre>
     <p>Each intake re-runs the recommender with the answers and the two earlier batches as history. Whichever batch you preferred becomes the next anchor for <code>plan</code>, with the bracket narrowed around it.</p>
+    <p>Then tune the ear on the three recordings, one at a time, against each batch's log:</p>
+    <pre>.venv/bin/python ear/ear.py tune ear/captures/crack_DATE_TIME.wav \
+    --sidecar ear/captures/crack_DATE_TIME.json --alog "roast-logs/#21_....alog"
+.venv/bin/python ear/ear.py tune ... --sweep thresh=8,10,12,14,16</pre>
+    <p>The timeline should show a burst of cracks starting near your FCs mark and nothing before DRY. If the mark and the audio disagree by more than 30 seconds on all three, the mark rule is the suspect, not the microphone.</p>
   </section>
 
   <footer>

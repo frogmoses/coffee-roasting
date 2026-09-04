@@ -656,6 +656,22 @@ def validate_metrics(metrics):
     return warnings
 
 
+def add_audio_metrics(metrics, audio_data):
+    """Attach the ear's first-crack verdict (crack_loader.extract_audio_data)
+    as metrics["fc_audio"], parallel to the curve-based fc_check.
+
+    Args:
+        metrics: Metrics dict from extract_metrics().
+        audio_data: Flat fc_audio dict, or None.
+
+    Returns:
+        The metrics dict (modified in place).
+    """
+    if audio_data:
+        metrics["fc_audio"] = audio_data
+    return metrics
+
+
 def add_visual_metrics(metrics, visual_data):
     """Merge sentinel visual data into the metrics dict.
 

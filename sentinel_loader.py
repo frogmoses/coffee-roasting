@@ -16,6 +16,26 @@ _env_dirs = os.environ.get("SENTINEL_CAPTURES_DIRS", "")
 CAPTURE_DIRS = [Path(os.path.expanduser(d)) for d in _env_dirs.split(":") if d]
 
 
+def find_session_logs(dirs, prefix):
+    """Find `<prefix>YYYY-MM-DD_HHMM.json` session files in the given dirs.
+
+    Shared by the visual sentinel (prefix "sentinel_") and the ear's crack
+    sidecars (prefix "crack_"), which use the same session_id convention.
+
+    Returns:
+        List of (session_id, path) tuples sorted by session_id.
+    """
+    logs = []
+    for search_dir in dirs:
+        search_dir = Path(search_dir)
+        if not search_dir.exists():
+            continue
+        for f in search_dir.glob(f"{prefix}*.json"):
+            logs.append((f.stem[len(prefix):], f))
+    logs.sort(key=lambda x: x[0])
+    return logs
+
+
 def find_sentinel_logs(captures_dir=None):
     """Find all sentinel JSON session logs across all capture directories.
 
@@ -25,29 +45,62 @@ def find_sentinel_logs(captures_dir=None):
     Returns:
         List of (session_id, path) tuples sorted by session_id.
     """
-    # If a specific dir is given, only scan that one
     dirs_to_scan = [Path(captures_dir)] if captures_dir else CAPTURE_DIRS
+    return find_session_logs(dirs_to_scan, "sentinel_")
 
-    logs = []
-    for search_dir in dirs_to_scan:
-        if not search_dir.exists():
-            continue
-        for f in search_dir.glob("sentinel_*.json"):
-            # Extract session_id from filename: sentinel_2026-02-17_1851.json
-            session_id = f.stem.replace("sentinel_", "")
-            logs.append((session_id, f))
 
-    logs.sort(key=lambda x: x[0])
-    return logs
+def match_session_to_roast(logs, roast_date, roast_time="", roast_uuid=""):
+    """Pick the session log that matches a roast from a (session_id, path) list.
+
+    Matching strategy (in priority order):
+    1. Deterministic: match on roast_uuid if both the log and .alog have it
+    2. Date match: session_id starts with the roast's YYYY-MM-DD
+    3. Time tiebreak: multiple matches on the same date -> closest HHMM
+
+    Returns:
+        Parsed JSON dict (with _source_path), or None if no match.
+    """
+    if not logs:
+        return None
+
+    # Priority 1: deterministic UUID match
+    if roast_uuid:
+        for session_id, path in logs:
+            data = load_json_cached(path)
+            if data and data.get("roast_uuid") == roast_uuid:
+                return data
+
+    # Priority 2: date-based matching with time tiebreak
+    matches = [(sid, path) for sid, path in logs if sid[:10] == roast_date]
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return load_json_cached(matches[0][1])
+
+    # Multiple matches on the same day — pick the closest HHMM. .alog times
+    # can carry seconds ("18:51:07"), so compare only the HH:MM part.
+    if roast_time:
+        roast_hhmm = roast_time[:5].replace(":", "")
+        best = None
+        best_diff = float("inf")
+        for session_id, path in matches:
+            session_hhmm = session_id[11:15]
+            try:
+                diff = abs(int(session_hhmm) - int(roast_hhmm))
+            except ValueError:
+                continue
+            if diff < best_diff:
+                best_diff = diff
+                best = path
+        if best:
+            return load_json_cached(best)
+
+    # Fallback: the latest session on that date
+    return load_json_cached(matches[-1][1])
 
 
 def match_sentinel_to_roast(roast_date, roast_time="", roast_uuid="", captures_dir=None):
-    """Find the sentinel session that matches a roast.
-
-    Matching strategy (in priority order):
-    1. Deterministic: match on roast_uuid if both sentinel and .alog have it
-    2. Date match: extract date from sentinel session_id (YYYY-MM-DD)
-    3. Time tiebreak: if multiple matches on same date, use closest time
+    """Find the sentinel session that matches a roast (see match_session_to_roast).
 
     Args:
         roast_date: ISO date string from .alog (e.g., "2026-02-17").
@@ -58,62 +111,22 @@ def match_sentinel_to_roast(roast_date, roast_time="", roast_uuid="", captures_d
     Returns:
         Parsed sentinel JSON dict, or None if no match found.
     """
-    logs = find_sentinel_logs(captures_dir)
-    if not logs:
-        return None
-
-    # Priority 1: deterministic UUID match
-    if roast_uuid:
-        for session_id, path in logs:
-            sentinel = _load_sentinel(path)
-            if sentinel and sentinel.get("roast_uuid") == roast_uuid:
-                return sentinel
-
-    # Priority 2: date-based matching with time tiebreak
-    matches = []
-    for session_id, path in logs:
-        # session_id format: YYYY-MM-DD_HHMM
-        session_date = session_id[:10]  # "2026-02-17"
-        if session_date == roast_date:
-            matches.append((session_id, path))
-
-    if not matches:
-        return None
-
-    # If only one match, use it
-    if len(matches) == 1:
-        return _load_sentinel(matches[0][1])
-
-    # Multiple matches on same day — pick closest time
-    if roast_time:
-        # Normalize roast_time "18:51" to "1851" for comparison
-        roast_hhmm = roast_time.replace(":", "")
-        best = None
-        best_diff = float("inf")
-        for session_id, path in matches:
-            session_hhmm = session_id[11:]  # "1851" from "2026-02-17_1851"
-            try:
-                diff = abs(int(session_hhmm) - int(roast_hhmm))
-                if diff < best_diff:
-                    best_diff = diff
-                    best = path
-            except ValueError:
-                continue
-        if best:
-            return _load_sentinel(best)
-
-    # Fallback: return the latest session on that date
-    return _load_sentinel(matches[-1][1])
+    return match_session_to_roast(find_sentinel_logs(captures_dir), roast_date, roast_time, roast_uuid)
 
 
-# Cache of parsed sentinel files keyed by path, invalidated on mtime change.
+# Cache of parsed session files keyed by path, invalidated on mtime change.
 # UUID matching scans every file per roast, so a scan over N roasts would
 # otherwise re-parse each JSON N times.
 _sentinel_cache = {}
 
 
 def _load_sentinel(path):
-    """Load and parse a sentinel JSON file (cached by path + mtime).
+    """Backward-compatible alias for load_json_cached()."""
+    return load_json_cached(path)
+
+
+def load_json_cached(path):
+    """Load and parse a session JSON file (cached by path + mtime).
 
     Injects _source_path into the returned dict so downstream code
     can determine which sentinel system produced the data.

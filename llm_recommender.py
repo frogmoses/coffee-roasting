@@ -108,6 +108,14 @@ FC are uncertain by about that much; say so, and prefer advice that doesn't \
 hinge on a precise FC. A consistent offset across previous roasts is worth \
 naming: it says the operator marks systematically early or late.
 
+fc_audio_check (when present) is a microphone crack detector's first-crack \
+onset, with its offset from the operator's mark. When audio and the curve \
+crash agree within ~15s, treat that as the true FC and the operator's mark as \
+off by the offset; when they disagree, trust audio for the onset and the curve \
+for the thermal effect, and say FC timing is uncertain. Prefer audio over the \
+by-ear mark on this quiet bean. "Not declared" with few cracks after arming \
+means the microphone missed it (placement/gain), not that FC never happened.
+
 If DATA QUALITY WARNINGS are listed, treat the affected metrics as unreliable: \
 skip or hedge advice that depends on them, and if the problem blocks analysis \
 (e.g. CHARGE or FC never marked), make fixing the recording the top action.
@@ -162,6 +170,12 @@ def _curated_metrics(metrics):
         out["fc_mark_check"] = {k: fc_check.get(k) for k in (
             "detected_time", "detected_bt", "offset", "mark_suspect", "details",
         ) if fc_check.get(k) is not None}
+    fc_audio = metrics.get("fc_audio")
+    if fc_audio:
+        out["fc_audio_check"] = {k: fc_audio.get(k) for k in (
+            "detected_time", "detected_bt", "offset", "mark_suspect",
+            "crack_count", "cracks_after_arm", "peak_cpm", "details",
+        ) if fc_audio.get(k) is not None}
     ror = metrics.get("ror_smoothness", {})
     if ror:
         out["ror_diagnostics"] = {
@@ -283,6 +297,8 @@ def _prior_block(prior_roasts):
             facts.append("RoR " + ", ".join(ror_bits))
         if p.get("fc_offset") is not None:
             facts.append(f"curve FC {p['fc_offset']:+d}s vs mark")
+        if p.get("fc_audio_offset") is not None:
+            facts.append(f"audio FC {p['fc_audio_offset']:+d}s vs mark")
         header = f"Batch {p.get('batch_nr', '?')} ({p.get('roast_date', 'unknown date')})"
         lines.append(f"{header}: {', '.join(facts) if facts else 'no metrics recorded'}")
         advice = p.get("next_roast") or []

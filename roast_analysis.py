@@ -9,6 +9,7 @@ advice to the operator's actual machine controls via the control timeline.
 from roast_parser import parse_alog, extract_roast_data
 from roast_metrics import (
     extract_metrics,
+    add_audio_metrics,
     add_visual_metrics,
     validate_metrics,
 )
@@ -16,7 +17,7 @@ from llm_recommender import generate_llm_recommendations
 
 
 def analyze_roast(data, bean_profile=None, visual_data=None,
-                  cupping_notes=None, prior_roasts=None):
+                  cupping_notes=None, prior_roasts=None, audio_data=None):
     """Full analysis of a roast: metrics, recommendations, next-roast actions.
 
     Args:
@@ -28,6 +29,8 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
             fed to the LLM so it can judge intended vs actual flavor.
         prior_roasts: Optional list of compact prior-roast dicts (same bean)
             from select_prior_roasts(), giving the LLM the dial-in history.
+        audio_data: Optional fc_audio dict from crack_loader.extract_audio_data()
+            (the microphone's first-crack verdict).
 
     Returns:
         Dict with metrics, recommendations, next_roast, and metadata.
@@ -37,6 +40,9 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
     # Merge sentinel visual data if available
     if visual_data:
         metrics = add_visual_metrics(metrics, visual_data)
+    # Merge the ear's first-crack verdict if a sidecar matched
+    if audio_data:
+        metrics = add_audio_metrics(metrics, audio_data)
 
     # Validate metrics for suspicious or missing data (recording errors, not
     # taste judgments — e.g. missing CHARGE, FC not marked, drop below FC)
@@ -129,6 +135,7 @@ def select_prior_roasts(history, roast_id, title, roast_date, batch_nr, limit=3)
             "fc_flick": ror.get("fc_flick", False),
             "ror_rising": ror.get("ror_rising", False),
             "fc_offset": (metrics.get("fc_check") or {}).get("offset"),
+            "fc_audio_offset": (metrics.get("fc_audio") or {}).get("offset"),
             "next_roast": entry.get("next_roast", []),
             "cupping_notes": entry.get("cupping_notes", ""),
         })

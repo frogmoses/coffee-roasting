@@ -136,6 +136,15 @@ If the [r1-eye](https://github.com/frogmoses/r1-eye) or [GoPro](https://github.c
 
 Sentinel sessions are linked to `.alog` files by UUID when Artisan's OFF button is configured to send `send({"event": "OFF"})` via WebSocket. This triggers the sentinel to read the `.alog` that Artisan just saved and embed the `roastUUID` for deterministic matching. Without OFF configured, matching falls back to date/time.
 
+## Microphone First-Crack Detector (ear)
+
+`ear/` runs on the roaster laptop beside Artisan, records every roast from a
+microphone at the drum, detects the clicks of first crack, and writes a
+sidecar the analyzer picks up on the next `scan` as `FC by audio` next to your
+mark and the curve's own estimate. First sessions run `listen --record-only`;
+tune the detector on the recordings with `ear/tune.py`; alerts come later. See
+CLAUDE.md, "Ear".
+
 ## Reference
 
 - Hottop manuals: download from [Hottop USA](https://hottopusa.com/hottop-roasters.html) and place in `reference/`

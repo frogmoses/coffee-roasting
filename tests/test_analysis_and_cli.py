@@ -227,6 +227,9 @@ def _patched_env(tmp_path, monkeypatch):
     # No find-coffee or sentinel lookups during tests
     monkeypatch.delenv("FIND_COFFEE_URL", raising=False)
     monkeypatch.delenv("SENTINEL_CAPTURES_DIRS", raising=False)
+    # Point the ear loader at an empty dir so real sidecars in ear/captures
+    # can never date-match a synthetic roast
+    monkeypatch.setenv("CRACK_CAPTURES_DIR", str(tmp_path / "no-cracks"))
     # Stub the LLM recommender so scan tests stay offline and deterministic
     monkeypatch.setattr(
         roast_analysis, "generate_llm_recommendations",

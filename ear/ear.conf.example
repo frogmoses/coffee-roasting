@@ -1,0 +1,40 @@
+# Ear (roaster-side) settings. Lives at ~/CodeProjects/ear/ear.conf on the
+# roaster and is loaded by ~/.local/bin/run_ear (set -a; source; exec
+# .venv/bin/python), like log-sync/artisan-sync.conf. Nothing here is a
+# secret, which is why it sits beside the code rather than in the secrets
+# directory; if a credential is ever needed, keep it out of this file and
+# point the wrapper's ENV_FILE at a protected one. The code reads only
+# os.environ and never loads this file itself.
+
+# Input device: unique substring of the PortAudio device name, or an index
+# (see `run_ear ear.py devices`). The Sound Blaster Play! 3 supplies the
+# EM272's plug-in power; PipeWire's default source is the laptop mic, so
+# never rely on the default. Quote values with spaces: the wrapper sources this file.
+EAR_DEVICE="Sound Blaster"
+
+# WebSocket port Artisan connects to (Config -> Ports -> WebSocket)
+EAR_PORT=8765
+
+# Where sidecars (crack_*.json) and recordings (crack_*.wav) are written
+EAR_CAPTURES_DIR=~/CodeProjects/ear/captures
+
+# Artisan's autosave directory (read on OFF to link roastUUID/batch number)
+ARTISAN_SAVE_DIR=~/coffee-roasts
+
+# rsync destination on the dev machine for sidecars and WAVs
+# e.g. brian@192.168.1.166:/home/brian/CodeProjects/coffee-roasting/ear/captures/
+CRACK_RSYNC_DEST=
+
+# Push the WAV too (1) or only the JSON (0). ~86 MB per 15-minute roast.
+EAR_PUSH_WAV=1
+
+# Optional sound file played through paplay/aplay when first crack is declared
+EAR_ALERT_SOUND=
+
+# Seconds of recording kept after DROP, and how long to wait for OFF
+EAR_POST_DROP_S=90
+EAR_OFF_TIMEOUT_S=600
+
+# deploy.sh target
+DEPLOY_SSH_HOST=roaster
+# DEPLOY_REMOTE_DIR=~/CodeProjects/ear

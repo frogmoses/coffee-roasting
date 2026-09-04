@@ -37,7 +37,17 @@ coffee-roasting/
 ├── hottop_reference.py     # Static Hottop control reference fed to the LLM prompt
 ├── roast_display.py        # Terminal formatting with Unicode box-drawing
 ├── coffee_lookup.py        # find-coffee API client with auto server lifecycle
-├── sentinel_loader.py      # Sentinel JSON loading, UUID/date matching, visual extraction
+├── sentinel_loader.py      # Session-JSON discovery/matching (shared), sentinel visual extraction
+├── crack_loader.py         # Ear sidecar (crack_*.json) matching -> metrics["fc_audio"]
+├── ear/                    # Roaster-side microphone first-crack detector (rsynced to the roaster)
+│   ├── ear.py                  # CLI: listen | devices | show | tune
+│   ├── crack_detector.py       # numpy click detector + FirstCrackTracker + DETECTOR_DEFAULTS
+│   ├── audio_capture.py        # sounddevice stream -> queue -> WAV (stdlib wave)
+│   ├── ear_session.py          # WS events, arming, sidecar, rsync, alert (sentinel.py analogue)
+│   ├── artisan_sync.py         # Artisan WebSocket server (copy of gopro/artisan_sync.py)
+│   ├── tune.py                 # Offline: WAV + .alog -> crack timeline, FC vs mark, sweeps
+│   ├── alert.py / ear_display.py / fake_artisan.py / deploy.sh / ear.conf.example
+│   └── captures/               # crack_*.json + crack_*.wav (gitignored)
 ├── .env.example            # Secret/env-var template (incl. ANTHROPIC_API_KEY); never commit .env
 ├── tests/                  # pytest suite (run: uv run pytest tests/)
 ├── pyproject.toml          # Package config (requires-python >=3.10, deps: requests, anthropic; dev: pytest)
@@ -105,6 +115,7 @@ prints the reason via `llm_status`; a failed cupping-refresh keeps the cached re
 
 Parallel enrichment during scan:
 - `coffee_lookup.lookup_bean()` — queries find-coffee API for bean profile
+- `crack_loader.match_crack_to_roast()` + `extract_audio_data()` — the ear's microphone first-crack verdict (see "Ear" below) -> `metrics["fc_audio"]`
 - `sentinel_loader.match_sentinel_to_roast()` — finds visual data by UUID (deterministic) or date/time (fallback)
 - `sentinel_loader.enrich_trajectory_with_temps()` — adds BT/ET from .alog to each visual trajectory point
 
@@ -322,6 +333,92 @@ Measured machine facts behind this (from roasts #8-#20): a single -10% heater
 step shows up in ET only after ~60-70s and is within BT-RoR noise for 2+
 minutes; identical manual schedules still spread FC by ~90s; later batches on
 the same day reach FC 15-35s sooner.
+
+## Ear: Microphone First-Crack Detector (`ear/`, `crack_loader.py`)
+
+The current bean cracks quietly and the operator marks FCs by ear; every
+development decision is timed from that mark. The curve check grades the mark
+to ~±25 s after the fact. The ear hears the event itself. Item #2 of the agreed
+automation sequence (curve check -> mic -> plant model -> optimizer).
+
+**Where it runs.** `ear/` is rsynced verbatim to the roaster laptop
+(`roaster`, coffee-man, Linux Mint 22.2, Python 3.12, uv, PipeWire, Artisan
+4.0.0) as `~/CodeProjects/ear/` by `ear/deploy.sh` (`--full` creates the venv:
+numpy, sounddevice, websockets; needs `libportaudio2`). Run via `~/.local/bin/run_ear`,
+which `set -a; source`s `~/CodeProjects/ear/ear.conf` (no secrets, so it lives
+beside the code like `log-sync/artisan-sync.conf`; template
+`ear/ear.conf.example`) and execs `.venv/bin/python` — code reads only
+`os.environ`. Both were created over ssh on 2026-09-04.
+Mic: Smart Clippy EM272Z1 (plug-in-power capsule) through a Sound Blaster
+Play! 3 USB card (ALSA card "S3"). PipeWire's default source is the laptop's
+internal mic, so `EAR_DEVICE=Sound Blaster` selects the card by name. The ear
+is now Artisan's WebSocket server on 8765 (the GoPro/R1 visual sentinels are
+retired; don't run both).
+
+**Session (`ear_session.py`).** Artisan connects on ON -> recording starts
+(48 kHz mono int16 WAV via stdlib `wave`; ~86 MB per 15 min) so the drum/fan
+floor is established before CHARGE. Events give the roast clock (CHARGE =
+`charge_epoch`), arm the FC rule (DRY; fallback CHARGE+300 s or `--arm-at`),
+mark DROP (sidecar saved + pushed; recording stops at DROP+`EAR_POST_DROP_S`
+and the WAV is pushed), and OFF links the freshly written `.alog`
+(`_link_alog`, with a retry until the file parses with a stable mtime) then
+re-saves/pushes. Unlike the sentinel, the server stays up after DROP until OFF
+or `EAR_OFF_TIMEOUT_S`, so the UUID link actually lands. `--record-only`
+suppresses alerts (first sessions); `--record-now` starts recording without
+Artisan and treats recording start as CHARGE (bench tests). Ctrl-C finalizes.
+Sidecar `ear/captures/crack_YYYY-MM-DD_HHMM.json`: session_id, bean, roast_uuid,
+batch_nr, mode, artisan_events (lowercase, s since CHARGE), charge_epoch,
+charge_source, armed {elapsed, source}, capture {device, sample_rate,
+start_epoch, wav_file, duration_s, peak_dbfs, clipped_blocks, overflows},
+detector (params), fc_rule, cracks [{epoch, stream_time, elapsed, peak_db,
+dur_ms, flatness, armed}], fc_detected | null, notes.
+
+**Detector (`crack_detector.py`, numpy only).** Per 100 ms block: 512-sample
+frames at hop 128 (2.7 ms), Hann, batched rfft, band energy 3-12 kHz in dB
+(motor/fan/harmonics live below ~2 kHz, cracks are broadband past 10 kHz).
+Adaptive floor = 20th percentile of the last 2 s of frame levels, frozen while
+a burst is open. Onset when level > floor + `thresh_db` (12). A burst is
+accepted as a crack if 1 <= dur <= 30 ms and spectral flatness at its peak
+>= 0.15 (rejects the Hottop's 356F panel beep, speech, fan surges, handling);
+rejected long/tonal bursts blank onsets for 300 ms; onsets within 40 ms merge.
+Reported onset = center of the first hot frame. `detect_cracks()` is the
+offline wrapper over the same `ClickDetector.feed()` path (block-size parity
+is tested). `FirstCrackTracker(n=4, window_s=20, min_elapsed_s=240)` declares
+FC once when n accepted cracks fall in the rolling window; onset = first
+crack in that window; pre-arm cracks are recorded but never counted
+(drying-phase tumble). Second crack is not distinguished (declares once; SC is
+minutes later). `DETECTOR_DEFAULTS` are starting points — `thresh_db`, `band`,
+`max_dur_ms`, `min_flatness`, `n`/`window_s` must be tuned on real recordings
+with `ear/tune.py` (crack histogram from CHARGE with DRY/FCs/DROP marks, FC
+verdict vs mark, `--sweep thresh=8,10,12,14`, `--plot`). Known true-click
+risk: heater relay clicks; the rate rule is the only live defense.
+
+**Analyzer side.** `crack_loader.py` reads `CRACK_CAPTURES_DIR` at call time
+(default `ear/captures` in this repo, where the roaster pushes),
+matches by roastUUID then date/closest HH:MM (shared helpers
+`sentinel_loader.find_session_logs` / `match_session_to_roast` /
+`load_json_cached`), re-anchors elapsed from crack epochs and the `.alog`'s
+`roastepoch` (`roast_parser` now exposes `roast_epoch`) if the WebSocket was
+down, and reduces the sidecar to `metrics["fc_audio"]`: detected_time,
+detected_bt, first_crack_time, mark_time, offset (detected - mark, same
+convention and `FC_MARK_TOLERANCE` as `fc_check`), mark_suspect, crack_count,
+cracks_after_arm, peak_cpm, capture stats, details. Shown as `FC by audio:` in
+the summary under `FC by curve:`, passed to the LLM as `fc_audio_check` (prompt:
+audio + curve agreeing within ~15 s is the true FC; prefer audio over the
+by-ear mark; "not declared" with few cracks means the mic missed it), and
+carried into prior roasts as `fc_audio_offset`.
+
+**Phases.** A (built): record-only + sidecar + rsync + tune.py + analyzer
+integration. B: tune defaults on the first recordings, add a real-FC excerpt
+as a regression fixture. C: alerts on by default. D (future, `--push-artisan`,
+default off): push FCs into Artisan — its push message format is ambiguous
+between the docs page and `artisanlib/wsport.py`; verify before building.
+
+**Tests.** `tests/test_ear_detector.py` (synthetic brown noise + hum with
+injected 3 ms clicks, a 4 kHz beep, a 150 ms burst, a noise ramp; block-size
+and int16/float parity; tracker rules) needs numpy (`pytest.importorskip`;
+`uv sync --extra ear`). `tests/test_crack_loader.py` covers matching,
+offsets, re-anchoring, metrics merge, prior roasts, and the scan seam.
 
 ## Display Layer (`roast_display.py`)
 
@@ -548,6 +645,7 @@ anymore. `detect_plateau()` is still used display-side by `_visual_summary()`.
 - `cupping_notes`, `roasting_notes`
 - `cupping_intake` dict (only when entered via `cupping --intake`/`--intake-json`; preserved across `--force`)
 - `warnings` list (data-quality warnings from `validate_metrics()`)
+- `metrics["fc_check"]` (curve-detected FC vs mark) and `metrics["fc_audio"]` (ear verdict; only when a sidecar matched)
 - `source_file` (path to .alog)
 
 Loaded/saved by `load_history()`/`save_history()` in `analyze.py:47-62`.

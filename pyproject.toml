@@ -8,6 +8,15 @@ dependencies = [
     "anthropic",
 ]
 
+[project.optional-dependencies]
+# Roaster-side ear (ear/): microphone capture + numpy detector. On the dev
+# machine `uv sync --extra ear` lets the detector tests run.
+ear = [
+    "numpy",
+    "sounddevice",
+    "websockets>=16",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 

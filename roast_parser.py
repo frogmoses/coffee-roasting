@@ -98,6 +98,9 @@ def extract_roast_data(raw):
 
         # Unique identifier for linking with sentinel data
         "roast_uuid": raw.get("roastUUID", ""),
+        # Unix epoch Artisan stamps on the roast — the wall-clock anchor for
+        # the ear's crack timestamps when the WebSocket CHARGE never arrived
+        "roast_epoch": raw.get("roastepoch", 0),
 
         # Roast characteristics
         "heavy_fc": raw.get("heavyFC", False),

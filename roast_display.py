@@ -170,6 +170,25 @@ def display_roast_summary(analysis):
             flag = "  ! check mark" if fc_check.get("mark_suspect") else ""
             lines.append(_box_row(
                 f"  FC by curve: {format_time(fc_check['detected_time'])} @ {fc_check['detected_bt']:.0f}F, {rel}{flag}", "", w))
+    # Microphone first-crack verdict (ear sidecar), beside the curve check
+    fc_audio = m.get("fc_audio")
+    if fc_audio:
+        if fc_audio.get("detected_time") is None:
+            lines.append(_box_row(
+                f"  FC by audio: not declared ({fc_audio.get('cracks_after_arm', 0)} cracks after arming)", "", w))
+        else:
+            off = fc_audio.get("offset")
+            if off is None:
+                rel = "no mark to compare"
+            elif abs(off) <= 5:
+                rel = "at mark"
+            else:
+                rel = f"{abs(off)}s before mark" if off < 0 else f"{off}s after mark"
+            bt = f" @ {fc_audio['detected_bt']:.0f}F" if fc_audio.get("detected_bt") is not None else ""
+            rate = f" ({fc_audio['peak_cpm']:.0f}/min)" if fc_audio.get("peak_cpm") else ""
+            flag = "  ! check mark" if fc_audio.get("mark_suspect") else ""
+            lines.append(_box_row(
+                f"  FC by audio: {format_time(fc_audio['detected_time'])}{bt}, {rel}{rate}{flag}", "", w))
     lines.append(_box_row(f"  Heat adjustments: {m.get('heat_adjustments', 0)}", "", w))
     ror_info = m.get("ror_smoothness", {})
     if ror_info.get("severity"):
