@@ -88,6 +88,9 @@ CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n`,
 Roast ID resolution (`resolve_roast_id()`): exact match -> batch number -> partial name (case-insensitive, most recent roast wins on multiple matches).
 
 Scan behaviors:
+- Only top-level `roast-logs/*.alog` are scanned. Non-roast Artisan logs
+  (e.g. a warm-up recorded as its own log, which has no CHARGE) go in
+  `roast-logs/not-roasts/` so they stay out of history
 - A corrupt `.alog` is skipped with a warning instead of aborting the scan
 - Roast ID collisions (same batch/title/date from a different file) get a `_HHMM` suffix instead of silently overwriting
 - `--force` re-scan preserves `cupping_notes` (and the structured `cupping_intake`) previously added via the `cupping` command **and feeds them into the LLM prompt** (they take precedence over the .alog's Artisan-typed notes)
@@ -372,7 +375,10 @@ floor is established before CHARGE. Events give the roast clock (CHARGE =
 `charge_epoch`), arm the FC rule (DRY; fallback CHARGE+480 s or `--arm-at`),
 mark DROP (sidecar saved + pushed; recording stops at DROP+`EAR_POST_DROP_S`
 and the WAV is pushed), and OFF links the freshly written `.alog`
-(`_link_alog`, with a retry until the file parses with a stable mtime) then
+(`_link_alog`: only a file whose mtime is at or after the session's CHARGE
+counts, polled for up to 30 s until it parses with a stable mtime — Artisan
+writes the new file a few seconds after sending OFF, and on the first live
+day the newest file at OFF time was still the previous roast's) then
 re-saves/pushes. Unlike the sentinel, the server stays up after DROP until OFF
 or `EAR_OFF_TIMEOUT_S`, so the UUID link actually lands. `--record-only`
 suppresses alerts (first sessions); `--record-now` starts recording without
@@ -408,7 +414,8 @@ crack in that window; pre-arm cracks are recorded but never counted
 minutes later). `DETECTOR_DEFAULTS` are starting points — `thresh_db`, `band`,
 `max_dur_ms`, `min_flatness`, `n`/`window_s` must be tuned on real recordings
 with `ear/tune.py` (crack histogram from CHARGE with DRY/FCs/DROP marks, FC
-verdict vs mark, `--sweep thresh=8,10,12,14`, `--plot`). Known true-click
+verdict vs mark, `--sweep thresh=8,10,12,14` / `n=` / `window=`, `--plot`;
+`--min-elapsed 0` lets the rule fire on short bench clips). Known true-click
 risk: heater relay clicks; the rate rule is the only live defense.
 
 **Analyzer side.** `crack_loader.py` reads `CRACK_CAPTURES_DIR` at call time
@@ -416,8 +423,9 @@ risk: heater relay clicks; the rate rule is the only live defense.
 matches by roastUUID then date/closest HH:MM (shared helpers
 `sentinel_loader.find_session_logs` / `match_session_to_roast` /
 `load_json_cached`), re-anchors elapsed from crack epochs and the `.alog`'s
-`roastepoch` (`roast_parser` now exposes `roast_epoch`) if the WebSocket was
-down, and reduces the sidecar to `metrics["fc_audio"]`: detected_time,
+`roastepoch` (`roast_parser` now exposes `roast_epoch`; it is Artisan's ON
+time, so CHARGE = `roast_epoch + timex[charge_idx]` — measured 135-165 s
+later on the first live day) if the WebSocket was down, and reduces the sidecar to `metrics["fc_audio"]`: detected_time,
 detected_bt, first_crack_time, mark_time, offset (detected - mark, same
 convention and `FC_MARK_TOLERANCE` as `fc_check`), mark_suspect, crack_count,
 cracks_after_arm, peak_cpm, capture stats, details. Shown as `FC by audio:` in

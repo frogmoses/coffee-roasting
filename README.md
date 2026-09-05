@@ -36,6 +36,12 @@ whether it was better or worse than the last batch. The recommendations are
 regenerated on the spot from how the coffee tasted. Free text works too with
 `--notes "..."`.
 
+Brew every batch you are comparing the same way. The Hario Switch recipe on
+the session sheet: 15 g medium grind, 250 g water at 94°C, switch closed, pour
+50 g and swirl at 0:00, fill to 250 g at 0:45, open at 2:00. Taste hot at about
+four minutes and again ten minutes later; sourness, astringency, and whether
+sweetness holds all show in the cooler cup. Rest three to five days first.
+
 ## On Roast Day
 
 **Plan the batches.** Instead of repeating one recipe, roast a bracket:
@@ -53,14 +59,20 @@ printable session sheet lives in `docs/rwanda-contrast-session.html`.
 pressing ON in Artisan:
 
 ```bash
-run_ear ear.py listen --bean "Rwanda Rusizi Gaseke" --record-only
+run_ear ear.py listen --bean "Rwanda Rusizi Gaseke"
 ```
 
 The ear records the roast from the microphone at the drum, logs every crack it
-hears, and syncs the recording and a sidecar to this machine. You still press
-FCs in Artisan. On the next `full`, the summary shows **FC by audio** next to
-your mark, so you learn how far your ears are from the beans. Start a fresh
-`listen` for each batch. To check the mic and gain first:
+hears, and syncs the recording and a sidecar to this machine. When it counts
+seven cracks inside 20 seconds it prints a bold FIRST CRACK line in its own
+terminal and rings the bell. That alert lands 15 to 20 seconds after the burst
+begins, so treat it as confirmation: mark FCs at the first distinct crack you
+hear or at 363F, whichever comes first; mark immediately if the alert fires
+before you have; and do not mark below about 355F unless it has. The ear
+marks nothing in Artisan. On the next `full`, the summary shows **FC by
+audio** next to your mark. Start a fresh `listen` for each batch, and press
+OFF in Artisan at the end so the recording links to the saved log. To check
+the mic and gain first:
 
 ```bash
 run_ear ear.py level
@@ -91,8 +103,8 @@ Ear commands run on the roaster as `run_ear ear.py <command>`:
 
 | Command | What it does |
 |---------|-------------|
-| `listen --bean X --record-only` | Record and log a roast; no alerts (first sessions) |
-| `listen --bean X` | Same, with a terminal alert when first crack is declared |
+| `listen --bean X` | Record and log a roast, with the terminal alert when first crack is declared |
+| `listen --bean X --record-only` | Same without the alert |
 | `level` | Per-second input level and crack count, for mic and gain checks |
 | `devices` | List audio inputs |
 | `show` | Summarize the latest sidecar |
