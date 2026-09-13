@@ -57,6 +57,10 @@ coffee-roasting/
 │   ├── alert.py / ear_display.py / fake_artisan.py / deploy.sh / ear.conf.example
 │   └── captures/               # crack_*.json + crack_*.wav (gitignored)
 ├── .env.example            # Secret/env-var template (incl. ANTHROPIC_API_KEY); never commit .env
+├── artisan_conf.py         # Read/write Artisan's Qt-INI settings file; decoded button/slider/alarm views; CLI
+├── artisan/                # Artisan settings under version control
+│   ├── Artisan.conf            # Copy of roaster:~/.config/artisan-scope/Artisan.conf (the reviewed truth)
+│   └── deploy.sh               # pull | diff | push against the roaster (push refuses while Artisan runs)
 ├── tests/                  # pytest suite (run: uv run pytest tests/)
 ├── pyproject.toml          # Package config (requires-python >=3.10, deps: requests, anthropic; dev: pytest)
 ├── log-sync/               # Artisan log sync scripts for roaster machine
@@ -487,6 +491,56 @@ injected 3 ms clicks, a 4 kHz beep, a 150 ms burst, a noise ramp; block-size
 and int16/float parity; tracker rules) needs numpy (`pytest.importorskip`;
 `uv sync --extra ear`). `tests/test_crack_loader.py` covers matching,
 offsets, re-anchoring, metrics merge, prior roasts, and the scan seam.
+
+## Artisan Settings Under Version Control (`artisan/`, `artisan_conf.py`)
+
+Artisan stores every setting in one Qt QSettings INI file, read at start and
+rewritten on exit, and only non-default keys are written (the roaster's file
+is ~200 lines). `artisan/Artisan.conf` is the repo copy;
+`DEPLOY_SSH_HOST=roaster artisan/deploy.sh pull|diff|push` syncs it. `push`
+runs `artisan_conf.py check`, refuses if an Artisan process is running on
+the roaster (the exit-time rewrite would clobber it; the `artisan-sync`
+watcher is filtered out of that check), scrubs for credential-looking keys,
+backs up the remote file as `.bak-<stamp>`, and copies. Artisan must then
+be started to load it.
+
+`artisan_conf.py` is line-preserving: `ArtisanConf.load/save` keep every
+line byte-exact and only `set`/`set_list` re-encode a value. Values starting
+with `@` (`@ByteArray`, `@Variant`, `@Point`: geometry, colors, extra-device
+lists) are opaque and never parsed. Qt's INI escaping is mirrored by
+`parse_value`/`format_value`: lists join with `, `; an element containing
+`,` `;` `=` or edge spaces is double-quoted; `\\` `\"` `\n` `\r` `\t` and
+`\xHH` escapes apply quoted or not; `\x` consumes hex digits greedily as
+Qt does. `roundtrip_mismatches()` (CLI `check`) re-encodes every non-opaque
+key and reports any that would change; it is clean on the roaster's file
+and a test asserts it stays so.
+
+Decoded views (`default_buttons()`, `custom_buttons()`, `sliders()`,
+`alarms()`; CLI `show ...`) use per-control code tables because each control
+indexes a different combobox list in `artisanlib/events.py`: default
+buttons (`[DefaultButtons] buttonactions`, `extrabuttonactions` for
+ON/OFF/SAMPLING) use `buttonActionTypes` (8 = Hottop Command, 21 = WebSocket
+Command); custom buttons (`[ExtraEventButtons] extraeventsactions`) store
+Artisan's canonical action code = `custom_button_actions` index, +1 above 6
+(8 Hottop Heater, 9 Hottop Fan, 10 Hottop Command, 22 WebSocket); sliders
+(`[Sliders] slideractions`) use `sliderActionTypes` (5 Hottop Heater,
+6 Hottop Fan). On this roaster slider 1 = Fan -> Hottop Fan, slider 4 =
+Heater -> Hottop Heater; custom event types 0-3 are Fan/Drum/Damper/Heater,
+4 none, 5-8 the relative (±) variants. Alarms live under `[Alarms]` as
+parallel lists (`alarmflag`, `alarmguard`, `alarmnegguard`, `alarmtime` =
+From event, `alarmoffset`, `alarmcond`, `alarmsource`, `alarmtemperature`,
+`alarmaction`, `alarmbeep`, `alarmstrings`) with the encodings in
+`ALARM_FROM/COND/SOURCE/ACTIONS` (same as the `.alrm` export; see
+`docs/automation-plan.md`). Other keys worth knowing, all under `[General]`
+unless noted: `KeepON`, `autoCharge`, `autoDrop` (the roaster has
+`autoDry=true`), `[WebSocket]` `charge_message`, `drop_message`,
+`addEvent_message`, `pushMessage_node`, `event_node`, `FCs_node` etc.,
+`STARTonCHARGE`, `OFFonDROP`. A key absent from the file is at Artisan's
+default; `set` appends it inside its section (creating the section at the
+end if needed).
+
+Tests: `tests/test_artisan_conf.py` (Qt escaping cases, sample and real-file
+round trips, decoded views against the roaster's setup, in-place edits, CLI).
 
 ## Display Layer (`roast_display.py`)
 

@@ -194,6 +194,15 @@ environment variables:
   loaded by `~/.local/bin/run_ear`; template in `ear/ear.conf.example`. The
   EM272 capsule goes in the Sound Blaster's 4-pole headset jack. Set capture
   gain in `alsamixer -c 1` so the empty running drum peaks near -30 dBFS.
+- Artisan's settings live in the repo as `artisan/Artisan.conf`, a copy of
+  the roaster's `~/.config/artisan-scope/Artisan.conf`. Buttons, sliders,
+  alarms, ports, and phases are all in it, so a change is a reviewed diff
+  rather than dialog clicks. `DEPLOY_SSH_HOST=roaster artisan/deploy.sh pull`
+  fetches the live file, `diff` compares, and `push` installs the repo copy
+  (it refuses while Artisan is running, since Artisan rewrites the file on
+  exit, and keeps a timestamped backup on the roaster). Start Artisan after a
+  push to load it. `uv run python artisan_conf.py show buttons` (or
+  `default-buttons`, `sliders`, `alarms`) prints the decoded tables.
 - Artisan: Config → Ports → WebSocket at `127.0.0.1:8765`, path `WebSocket`,
   with button actions `send({"event": "ON"})`, `CHARGE`, `DRY`, `FCs`, and
   `OFF`. OFF is what lets the ear link its recording to the saved `.alog`.
