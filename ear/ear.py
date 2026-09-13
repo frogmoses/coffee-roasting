@@ -40,6 +40,7 @@ def cmd_listen(args):
         ws_port=args.port,
         device=args.device,
         record_only=args.record_only,
+        rollover=not args.once,
         record_now=args.record_now,
         arm_at=args.arm_at,
         debug=args.debug,
@@ -121,6 +122,7 @@ def main():
     p.add_argument("--device", default=None, help="input device substring/index (default EAR_DEVICE)")
     p.add_argument("--port", type=int, default=int(os.environ.get("EAR_PORT", "8765")))
     p.add_argument("--record-only", action="store_true", help="log everything, no alerts")
+    p.add_argument("--once", action="store_true", help="exit after one roast instead of listening for the next")
     p.add_argument("--record-now", action="store_true", help="start recording immediately (bench test)")
     p.add_argument("--arm-at", type=float, default=None, help="arm the FC rule N seconds after CHARGE (default: DRY event, else 300)")
     p.add_argument("--debug", action="store_true", help="log raw WebSocket messages")

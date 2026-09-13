@@ -174,7 +174,7 @@
         <pre>cd ~/CodeProjects/ear &amp;&amp; run_ear ear.py listen --bean "Rwanda Rusizi Gaseke"</pre>
         Then press ON. The status box should say <strong>Artisan: connected</strong> and <strong>Rec:</strong> with a file name.</li>
       <li>With the drum running and no beans, set the capture gain in <code>alsamixer -c 1</code> so the <strong>Peak</strong> line reads about <strong>-30 dBFS</strong>. If the box ever shows <strong>CLIPPING</strong>, turn the gain down before the next batch.</li>
-      <li>Keep the ear's terminal where you can see and hear it. Leave it running through OFF; the sidecar and WAV push to the dev machine on their own. Start a fresh <code>listen</code> for each batch, after Artisan's OFF and before the next ON.</li>
+      <li>Keep the ear's terminal where you can see and hear it. Leave it running through OFF; the sidecar and WAV push to the dev machine on their own. One <code>listen</code> covers the whole day: it ignores the OFF from an Artisan restart, and after each finished roast it starts a fresh session on its own. Leave it running until the last batch has printed its <b>Linked to .alog</b> line.</li>
       <li>If capture fails, the box says <strong>Rec: FAILED</strong>. Roast anyway; the batch still counts. Run <code>run_ear ear.py devices</code> afterward to see what PortAudio found.</li>
     </ol>
   </section>

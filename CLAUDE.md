@@ -24,8 +24,11 @@ run_roast-analyzer analyze.py <command>
 
 Roaster side (the ear, see "Ear" below), on the roaster laptop:
 ```bash
-run_ear ear.py listen --bean "<bean>" --record-only
+run_ear ear.py listen --bean "<bean>"
 ```
+One `listen` covers a roasting day (it rolls into a new session after each
+roast and ignores the OFF from an Artisan restart); `--record-only` silences
+the alert, `--once` exits after one roast.
 
 ## Project Structure
 
@@ -45,7 +48,7 @@ coffee-roasting/
 ├── sentinel_loader.py      # Session-JSON discovery/matching (shared), sentinel visual extraction
 ├── crack_loader.py         # Ear sidecar (crack_*.json) matching -> metrics["fc_audio"]
 ├── ear/                    # Roaster-side microphone first-crack detector (rsynced to the roaster)
-│   ├── ear.py                  # CLI: listen | devices | show | tune
+│   ├── ear.py                  # CLI: listen | level | devices | show | tune
 │   ├── crack_detector.py       # numpy click detector + FirstCrackTracker + DETECTOR_DEFAULTS
 │   ├── audio_capture.py        # sounddevice stream -> queue -> WAV (stdlib wave)
 │   ├── ear_session.py          # WS events, arming, sidecar, rsync, alert (sentinel.py analogue)
@@ -376,10 +379,10 @@ floor is established before CHARGE. Events give the roast clock (CHARGE =
 mark DROP (sidecar saved + pushed; recording stops at DROP+`EAR_POST_DROP_S`
 and the WAV is pushed), and OFF links the freshly written `.alog`
 (`_link_alog`: only a file whose mtime is at or after the session's CHARGE
-counts, polled for up to 30 s until it parses with a stable mtime — Artisan
-writes the new file a few seconds after sending OFF, and on the first live
-day the newest file at OFF time was still the previous roast's) then
-re-saves/pushes. Unlike the sentinel, the server stays up after DROP until OFF
+counts, polled for up to `EAR_LINK_WAIT_S` until it parses with a stable
+mtime — Artisan writes the file when the operator saves, not at OFF, and on
+the first live day the newest file at OFF time was still the previous
+roast's) then re-saves/pushes. Unlike the sentinel, the server stays up after DROP until OFF
 or `EAR_OFF_TIMEOUT_S`, so the UUID link actually lands. `--record-only`
 suppresses alerts (first sessions); `--record-now` starts recording without
 Artisan and treats recording start as CHARGE (bench tests); an explicit
@@ -395,6 +398,16 @@ cracks from there so FC can still be declared live (alert says "now"). The
 sidecar then carries `charge_source: "missing"`, `charge_epoch: null`, and
 null `elapsed` on cracks/armed/fc_detected (`clock: "provisional"`), keeping
 the epochs so `crack_loader` re-anchors from the .alog's `roastepoch`.
+**Restart dance.** The operator restarts Artisan (and the Hottop) between
+batches rather than waiting for the Hottop's ready screen, to keep the drum
+hot. So an OFF that arrives before any CHARGE is a restart, not a roast: the
+ear drops that OFF and keeps listening, and on the next Artisan connect it
+discards the pre-roast recording (`_discard_capture`) so the WAV starts at
+the real ON. After a real roast (OFF received, linked, pushed) `run_session`
+rolls straight into a fresh session on the same port, so one `listen` covers
+a roasting day; `--once` exits after one roast, Ctrl-C ends everything.
+Tested 2026-09-13 with a bare OFF followed by two `fake_artisan.py --fast`
+roasts against one listen (two sidecars, no restart).
 **DROP is optional.** Artisan's DROP button runs Hottop commands (flap,
 stirrer, heat off, fan) and cannot also send a WebSocket message, so no
 sidecar has a drop event; the sidecar is first saved at OFF and the
@@ -461,10 +474,13 @@ roast clock, else the .alog's DRY mark, else CHARGE+480 s
 against the rule's 21/min).
 
 **Phases.** A (built): record-only + sidecar + rsync + tune.py + analyzer
-integration. B: tune defaults on the first recordings, add a real-FC excerpt
-as a regression fixture. C: alerts on by default. D (future, `--push-artisan`,
-default off): push FCs into Artisan — its push message format is ambiguous
-between the docs page and `artisanlib/wsport.py`; verify before building.
+integration. B (done 2026-09-04): rule retuned to 7-in-20s on the first
+recordings; a real-FC regression fixture is still owed. C (done): alerts on
+by default, `--record-only` to silence. D (future, `--push-artisan`, default
+off): push FCs into Artisan — its push message format is ambiguous between
+the docs page and `artisanlib/wsport.py`; verify before building.
+Open detector issue: every 2026-09-13 session clipped (59-94 blocks at
+-0 dBFS peak); check gain against the `level` command before the next tune.
 
 **Tests.** `tests/test_ear_detector.py` (synthetic brown noise + hum with
 injected 3 ms clicks, a 4 kHz beep, a 150 ms burst, a noise ramp; block-size

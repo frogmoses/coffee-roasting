@@ -63,6 +63,11 @@ class EarSession:
         self.push_wav = os.environ.get("EAR_PUSH_WAV", "1") not in ("0", "false", "no", "")
 
         self.session_id = time.strftime("%Y-%m-%d_%H%M")
+        # A rolled-over session can start in the same minute as the one that
+        # just finished; add seconds rather than overwrite its sidecar (the
+        # loader reads only the date and HH:MM, so the suffix is harmless)
+        if (self.captures_dir / f"crack_{self.session_id}.json").exists():
+            self.session_id = time.strftime("%Y-%m-%d_%H%M%S")
         self.mode = "record-only" if record_only else "live"
         self.running = False
         self.charge_epoch = None
@@ -131,6 +136,14 @@ class EarSession:
             self._save_sidecar()
             self._push([self._sidecar_path()])
         elif event_name == "OFF":
+            if self.charge_epoch is None and not self.record_now:
+                # Artisan (and the Hottop) get restarted between batches to
+                # keep the drum hot instead of waiting for the ready screen.
+                # An OFF before any CHARGE is that restart, not a roast: stay
+                # up and keep waiting for the real one.
+                self.artisan.events.pop("OFF", None)
+                print("  OFF before CHARGE: Artisan restart, not a roast — still listening")
+                return
             self.off_received = True
 
     def _t0(self):
@@ -154,8 +167,27 @@ class EarSession:
         print(f"  !! {event_name} arrived with no CHARGE seen (ear started after charge?). "
               f"Counting cracks from now; the analyzer rebuilds roast times from the .alog.")
 
+    def _discard_capture(self):
+        """Throw away a recording that has no roast in it (Artisan restarted
+        before CHARGE), so the WAV for the real roast starts at its ON."""
+        self.stop_capture()
+        if self.wav_path and self.wav_path.exists():
+            try:
+                self.wav_path.unlink()
+            except OSError:
+                pass
+        with self._lock:
+            self.cracks = []
+        self.capture = None
+        self.detector = None
+        self._wav_pushed = False
+        print("  Discarded the pre-roast recording; starting over")
+
     def _on_artisan_connect(self):
         print("  Artisan connected")
+        if (self.capture is not None and self.capture.running and self.charge_epoch is None
+                and not self.record_now):
+            self._discard_capture()
         if self.capture is None and self.capture_error is None:
             # A capture failure must not take the WebSocket handler down:
             # events are still worth logging, and the display shows the error
@@ -420,6 +452,13 @@ class EarSession:
         self._finalized = True
         self.running = False
         self.stop_capture()
+        # A session that never saw a roast (Ctrl-C while waiting for the
+        # next batch, or an aborted start) has nothing worth a sidecar
+        if self.charge_epoch is None and not self.cracks and not self.artisan.events:
+            print("  Nothing recorded; no sidecar")
+            if self.wav_path and self.wav_path.exists() and self.wav_path.stat().st_size < 100:
+                self.wav_path.unlink()
+            return
         # Save and push first, so the sidecar exists on the dev machine even
         # if the (possibly minutes-long) wait for Artisan's save is cut short
         path = self._save_sidecar()
@@ -516,15 +555,24 @@ class EarSession:
         await self.artisan.wait_until_stopped()
 
 
-def run_session(**kwargs):
-    """Blocking entry point; Ctrl-C saves and pushes whatever exists."""
-    session = EarSession(**kwargs)
-    try:
-        asyncio.run(session.run())
-    except KeyboardInterrupt:
-        print("\nEar interrupted — saving")
-        session.finalize()
-    return session
+def run_session(rollover=True, **kwargs):
+    """Blocking entry point; Ctrl-C saves and pushes whatever exists.
+
+    With `rollover` (the default) a finished roast (OFF received, linked,
+    pushed) is followed by a fresh session on the same port, so one
+    `listen` covers a whole roasting day. Bench runs and Ctrl-C end it.
+    """
+    while True:
+        session = EarSession(**kwargs)
+        try:
+            asyncio.run(session.run())
+        except KeyboardInterrupt:
+            print("\nEar interrupted — saving")
+            session.finalize()
+            return session
+        if not rollover or session.record_now or not session.off_received:
+            return session
+        print("\nRoast finished. Listening for the next batch (Ctrl-C to quit)...\n")
 
 
 def load_latest_sidecar(captures_dir=None):
