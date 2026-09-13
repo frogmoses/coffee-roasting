@@ -60,7 +60,7 @@ coffee-roasting/
 ├── artisan_conf.py         # Read/write Artisan's Qt-INI settings file; decoded button/slider/alarm views; CLI
 ├── artisan/                # Artisan settings under version control
 │   ├── Artisan.conf            # Copy of roaster:~/.config/artisan-scope/Artisan.conf (the reviewed truth)
-│   └── deploy.sh               # pull | diff | push against the roaster (push refuses while Artisan runs)
+│   └── deploy.sh               # pull | diff | push against the roaster; local = dev copy for this machine's Artisan
 ├── tests/                  # pytest suite (run: uv run pytest tests/)
 ├── pyproject.toml          # Package config (requires-python >=3.10, deps: requests, anthropic; dev: pytest)
 ├── log-sync/               # Artisan log sync scripts for roaster machine
@@ -535,9 +535,27 @@ From event, `alarmoffset`, `alarmcond`, `alarmsource`, `alarmtemperature`,
 unless noted: `KeepON`, `autoCharge`, `autoDrop` (the roaster has
 `autoDry=true`), `[WebSocket]` `charge_message`, `drop_message`,
 `addEvent_message`, `pushMessage_node`, `event_node`, `FCs_node` etc.,
-`STARTonCHARGE`, `OFFonDROP`. A key absent from the file is at Artisan's
+`STARTonCHARGE`, `OFFonDROP`; `[General] backgroundPlaybackEvents`,
+`[Alarms] loadAlarmsFromProfile`. Qt serialises a ONE-element list as an
+opaque `@Variant(...)` (the roaster's `extradevices`, a one-row alarm
+table), so the decoded views show `<opaque>` for such a column and a table
+the tool writes needs at least two rows. A key absent from the file is at Artisan's
 default; `set` appends it inside its section (creating the section at the
 end if needed).
+
+**Local development copy.** Artisan 4.0.0 is installed on this machine too
+(`/usr/bin/artisan`, which execs `.../share/artisan/artisan` — the string
+both running-guards match). `artisan/deploy.sh local` installs the repo
+copy into `~/.config/artisan-scope/Artisan.conf` here with only the
+machine-specific keys rewritten: autosave/profile paths -> `~/coffee-roasts-dev`
+(`ARTISAN_DEV_ROASTS`; never `roast-logs/`, or simulator runs would be
+scanned as roasts), the roaster's recent-file keys removed, batch prefix
+`dev#`. The Hottop device (id 53) is kept so the dialogs match the roaster;
+with a profile loaded and Tools -> Simulator checked, Artisan replays it as
+live data and `canvas.py` skips the Hottop serial connection (`if not
+bool(self.aw.simulator) and self.device == 53`). Device 18 is Artisan's
+NONE/manual device. Local Artisan connects to a local `ear.py listen` on
+8765 exactly as the roaster does.
 
 Tests: `tests/test_artisan_conf.py` (Qt escaping cases, sample and real-file
 round trips, decoded views against the roaster's setup, in-place edits, CLI).

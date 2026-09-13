@@ -16,7 +16,11 @@ unchanged. Only values it parses or formats follow Qt's INI escaping:
 - inside a value `\\` `\"` `\n` `\r` `\t` are escaped, other control
   characters as `\xHH`; the escapes apply whether or not the element is
   quoted (Artisan writes `send({\"event\":\"CHARGE\"})` unquoted)
-- a value starting with `@` is opaque and is never parsed
+- a value starting with `@` is opaque and is never parsed. Qt writes a
+  ONE-element list this way too (`extradevices=@Variant(...)` on the
+  roaster, a one-row alarm table on the dev machine), so the decoded views
+  show such a column as `<opaque>`; a table the tool writes should have at
+  least two rows, or Artisan reads it back as a scalar
 
 The action-code tables mirror Artisan 4.0 (`artisanlib/events.py`,
 `artisanlib/alarms.py`): each kind of control stores a different index into
@@ -31,6 +35,7 @@ Usage (add -f FILE for a file other than artisan/Artisan.conf):
     python artisan_conf.py show alarms
     python artisan_conf.py get SECTION KEY
     python artisan_conf.py set SECTION KEY VALUE [VALUE ...]   # >1 value = list
+    python artisan_conf.py delete SECTION KEY  # back to Artisan's default
     python artisan_conf.py check               # parse/format round trip
 """
 
@@ -275,6 +280,18 @@ class ArtisanConf:
         raw = self.get(section, key)
         return None if raw is None else parse_value(raw)
 
+    OPAQUE = "<opaque>"
+
+    def _column(self, section, key):
+        """A table column for the decoded views: [] when unset, ["<opaque>"]
+        when Qt serialised it in binary (a one-element list)."""
+        raw = self.get(section, key)
+        if raw is None:
+            return []
+        if raw.startswith("@"):
+            return [self.OPAQUE]
+        return parse_value(raw)
+
     def get_str(self, section, key, default=None):
         items = self.get_list(section, key)
         return default if items is None else items[0]
@@ -318,7 +335,7 @@ class ArtisanConf:
 
     def custom_buttons(self):
         sec = "ExtraEventButtons"
-        cols = {name: self.get_list(sec, key) or [] for name, key in (
+        cols = {name: self._column(sec, key) for name, key in (
             ("label", "extraeventslabels"), ("description", "extraeventsdescriptions"),
             ("type", "extraeventstypes"), ("value", "extraeventsvalues"),
             ("action", "extraeventsactions"), ("command", "extraeventsactionstrings"),
@@ -329,8 +346,8 @@ class ArtisanConf:
         rows = []
         for i in range(n):
             cell = {name: (col[i] if i < len(col) else "") for name, col in cols.items()}
-            code = int(cell["action"] or 0)
-            etype = int(cell["type"] or 4)
+            code = _int(cell["action"], 0)
+            etype = _int(cell["type"], 4)
             rows.append({
                 "index": i + 1,
                 "label": cell["label"].replace("\n", " "),
@@ -359,7 +376,7 @@ class ArtisanConf:
     def alarms(self):
         """Decoded alarm table (the [Alarms] section), or [] when none."""
         sec = "Alarms"
-        cols = {name: self.get_list(sec, key) or [] for name, key in (
+        cols = {name: self._column(sec, key) for name, key in (
             ("flag", "alarmflag"), ("guard", "alarmguard"), ("negguard", "alarmnegguard"),
             ("from", "alarmtime"), ("offset", "alarmoffset"), ("cond", "alarmcond"),
             ("source", "alarmsource"), ("temperature", "alarmtemperature"),
@@ -369,19 +386,31 @@ class ArtisanConf:
         rows = []
         for i in range(n):
             cell = {name: (col[i] if i < len(col) else "") for name, col in cols.items()}
-            src = int(cell["source"] or -3)
+            if any(v == self.OPAQUE for v in cell.values()):
+                rows.append({"index": i + 1, "enabled": self.OPAQUE, "from": self.OPAQUE,
+                             "action": self.OPAQUE, "string": "one-row table stored in Qt binary form"})
+                continue
+            src = _int(cell["source"], -3)
             rows.append({
                 "index": i + 1, "enabled": cell["flag"] == "1",
-                "guard": int(cell["guard"] or -1), "negguard": int(cell["negguard"] or -1),
-                "from": ALARM_FROM.get(int(cell["from"] or 0), cell["from"]),
+                "guard": _int(cell["guard"], -1), "negguard": _int(cell["negguard"], -1),
+                "from": ALARM_FROM.get(_int(cell["from"], 0), cell["from"]),
                 "offset_s": int(float(cell["offset"] or 0)),
                 "source": ALARM_SOURCE.get(src, f"extra {src - 2}"),
-                "cond": ALARM_COND.get(int(cell["cond"] or 0), cell["cond"]),
+                "cond": ALARM_COND.get(_int(cell["cond"], 0), cell["cond"]),
                 "temperature": cell["temperature"],
-                "action": ALARM_ACTIONS.get(int(cell["action"] or -1), cell["action"]),
+                "action": ALARM_ACTIONS.get(_int(cell["action"], -1), cell["action"]),
                 "beep": cell["beep"] == "1", "string": cell["string"],
             })
         return rows
+
+
+def _int(text, default):
+    """int() that tolerates blanks and <opaque> cells."""
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return default
 
 
 def _label(table, code):
@@ -412,6 +441,8 @@ def main(argv=None):
     p_get.add_argument("section"); p_get.add_argument("key")
     p_set = sub.add_parser("set", help="set a key (several values make a list)")
     p_set.add_argument("section"); p_set.add_argument("key"); p_set.add_argument("values", nargs="+")
+    p_del = sub.add_parser("delete", help="remove a key (Artisan then uses its default)")
+    p_del.add_argument("section"); p_del.add_argument("key")
     sub.add_parser("check", help="parse/format round trip over every key")
     args = ap.parse_args(argv)
 
@@ -444,6 +475,11 @@ def main(argv=None):
             conf.set_list(args.section, args.key, args.values)
         conf.save(args.file)
         print(f"{args.section}/{args.key}: {before!r} -> {conf.get(args.section, args.key)!r}")
+    elif args.cmd == "delete":
+        before = conf.get(args.section, args.key)
+        conf.delete(args.section, args.key)
+        conf.save(args.file)
+        print(f"{args.section}/{args.key}: {'removed' if before is not None else 'was not set'}")
     elif args.cmd == "check":
         bad = conf.roundtrip_mismatches()
         for s, k in bad:

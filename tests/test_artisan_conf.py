@@ -132,5 +132,33 @@ def test_cli_get_set_check(tmp_path, capsys):
     assert reloaded.get("General", "KeepON") == "true"
     assert reloaded.get_list("General", "Phases") == ["0", "300", "370", "450"]
     assert artisan_conf.main(["-f", str(path), "get", "General", "nothing"]) == 1
+    assert artisan_conf.main(["-f", str(path), "delete", "General", "KeepON"]) == 0
+    assert ArtisanConf.load(path).get("General", "KeepON") is None
+    assert artisan_conf.main(["-f", str(path), "delete", "General", "KeepON"]) == 0   # idempotent
     assert artisan_conf.main(["-f", str(path), "show", "buttons"]) == 0
     assert "Hottop Command" in capsys.readouterr().out
+
+
+def test_opaque_one_row_alarm_table_is_reported_not_crashed():
+    # Qt serialises a one-element list as @Variant(...); seen on the dev
+    # machine's own file (one alarm) and as extradevices on the roaster
+    conf = _conf(SAMPLE + r"""
+[Alarms]
+alarmaction=@Variant(\0\0\0\t\0\0\0\x1\0\0\0\x2\0\0\0\x1)
+alarmflag=@Variant(\0\0\0\t\0\0\0\x1\0\0\0\x2\0\0\0\x1)
+alarmtime=@Variant(\0\0\0\t\0\0\0\x1\0\0\0\x2\xff\xff\xff\xff)
+""")
+    rows = conf.alarms()
+    assert len(rows) == 1 and rows[0]["enabled"] == ArtisanConf.OPAQUE
+    assert conf.roundtrip_mismatches() == []
+
+    # a real two-row table decodes by name
+    conf.set_list("Alarms", "alarmflag", ["1", "0"]); conf.set_list("Alarms", "alarmtime", ["2", "0"])
+    conf.set_list("Alarms", "alarmoffset", ["150", "0"]); conf.set_list("Alarms", "alarmcond", ["1", "1"])
+    conf.set_list("Alarms", "alarmsource", ["1", "1"]); conf.set_list("Alarms", "alarmtemperature", ["500", "400"])
+    conf.set_list("Alarms", "alarmaction", ["13", "13"]); conf.set_list("Alarms", "alarmbeep", ["1", "1"])
+    conf.set_list("Alarms", "alarmguard", ["-1", "-1"]); conf.set_list("Alarms", "alarmnegguard", ["-1", "-1"])
+    conf.set_list("Alarms", "alarmstrings", ["drop at FC+150", "BT ceiling"])
+    rows = conf.alarms()
+    assert rows[0]["from"] == "FC START" and rows[0]["offset_s"] == 150 and rows[0]["action"] == "DROP"
+    assert rows[1]["enabled"] is False and rows[1]["source"] == "BT" and rows[1]["cond"] == ">"

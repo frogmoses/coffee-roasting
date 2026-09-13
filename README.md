@@ -203,6 +203,12 @@ environment variables:
   exit, and keeps a timestamped backup on the roaster). Start Artisan after a
   push to load it. `uv run python artisan_conf.py show buttons` (or
   `default-buttons`, `sliders`, `alarms`) prints the decoded tables.
+  `artisan/deploy.sh local` installs the same file into this machine's
+  Artisan as a development copy, with roasts saving to `~/coffee-roasts-dev`
+  instead of the roaster's folder. Open Artisan here, load any log from
+  `roast-logs/`, tick Tools → Simulator, and press ON: Artisan replays that
+  roast as live data, so alarms, buttons, and the ear can be tried at the
+  desk with no Hottop attached.
 - Artisan: Config → Ports → WebSocket at `127.0.0.1:8765`, path `WebSocket`,
   with button actions `send({"event": "ON"})`, `CHARGE`, `DRY`, `FCs`, and
   `OFF`. OFF is what lets the ear link its recording to the saved `.alog`.
