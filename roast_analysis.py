@@ -128,7 +128,7 @@ def select_prior_roasts(history, roast_id, title, roast_date, batch_nr, limit=3)
             "metrics": {k: metrics.get(k, 0) for k in (
                 "total_time", "fc_time", "fc_bt", "dev_phase_time",
                 "dev_phase_pct", "drop_bt", "weight_loss_pct",
-                "heat_adjustments",
+                "heat_adjustments", "ambient_temp",
             )},
             "ror_severity": ror.get("severity", ""),
             "fc_crash": ror.get("fc_crash", False),

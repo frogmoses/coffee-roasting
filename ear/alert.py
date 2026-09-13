@@ -23,7 +23,9 @@ def announce_fc(fc, cpm=None, sound_path=None):
         sound_path: optional audio file to play; defaults to EAR_ALERT_SOUND.
     """
     rate = f" ({cpm:.0f}/min)" if cpm else ""
-    print(f"\a\033[1m>>> FIRST CRACK {_fmt(fc['elapsed'])}{rate} <<<\033[0m", flush=True)
+    # elapsed is None when the ear joined after CHARGE and has no roast clock
+    when = _fmt(fc["elapsed"]) if fc.get("elapsed") is not None else "now"
+    print(f"\a\033[1m>>> FIRST CRACK {when}{rate} <<<\033[0m", flush=True)
     path = sound_path or os.environ.get("EAR_ALERT_SOUND", "")
     if not path or not os.path.exists(path):
         return

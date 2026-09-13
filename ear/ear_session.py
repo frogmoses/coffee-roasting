@@ -66,7 +66,13 @@ class EarSession:
         self.mode = "record-only" if record_only else "live"
         self.running = False
         self.charge_epoch = None
-        self.charge_source = None      # "artisan" or "record-now"
+        self.charge_source = None      # "artisan", "record-now", or "missing"
+        # T0 for the FC rule. Equals charge_epoch once CHARGE is seen. If the
+        # ear joined mid-roast (DRY/FCs arrive with no CHARGE), a provisional
+        # clock is adopted so the rule can still count cracks; elapsed values
+        # are then NOT written to the sidecar — crack_loader re-anchors from
+        # crack epochs and the .alog's roastepoch instead.
+        self.rule_epoch = None
         self.drop_epoch = None
         self.off_received = False
         self.roast_uuid = ""
@@ -106,17 +112,47 @@ class EarSession:
 
     def _on_artisan_event(self, event_name, elapsed):
         print(f"  Artisan: {event_name} at T+{ear_display.fmt_time(elapsed)}")
+        if event_name in ("DRY", "FCs") and self._t0() is None:
+            self._adopt_late_clock(event_name)
         if event_name == "CHARGE":
             self.charge_epoch = self.artisan.charge_time
+            self.rule_epoch = self.charge_epoch
             self.charge_source = "artisan"
         elif event_name == "DRY":
-            self.tracker.arm(elapsed, "DRY")
+            if self.charge_epoch is not None:
+                self.tracker.arm(elapsed, "DRY")
+            else:
+                self.tracker.arm(self._rule_elapsed(time.time()), "DRY (late start)")
+        elif event_name == "FCs" and self.tracker.armed_at is None:
+            # Joined even later: arm now so the burst still gets an onset
+            self.tracker.arm(self._rule_elapsed(time.time()), "FCs (late start)")
         elif event_name == "DROP":
             self.drop_epoch = time.time()
             self._save_sidecar()
             self._push([self._sidecar_path()])
         elif event_name == "OFF":
             self.off_received = True
+
+    def _t0(self):
+        """Epoch the FC rule counts from: CHARGE, else the provisional clock."""
+        return self.charge_epoch if self.charge_epoch is not None else self.rule_epoch
+
+    def _rule_elapsed(self, epoch):
+        """Seconds since _t0() for an epoch, or None before any clock exists."""
+        t0 = self._t0()
+        return None if t0 is None else epoch - t0
+
+    def _adopt_late_clock(self, event_name):
+        """The ear joined after CHARGE (batch #25 on 2026-09-13: two false
+        starts, then a listen that connected after the charge). With no roast
+        clock every crack stayed un-armed and FC was never declared. Assume
+        the roast is ARM_FALLBACK_S in — DRY lands 6-7 min after charge, so
+        the rule's minimum-elapsed gate is satisfied — and count from here.
+        """
+        self.rule_epoch = time.time() - ARM_FALLBACK_S
+        self.charge_source = "missing"
+        print(f"  !! {event_name} arrived with no CHARGE seen (ear started after charge?). "
+              f"Counting cracks from now; the analyzer rebuilds roast times from the .alog.")
 
     def _on_artisan_connect(self):
         print("  Artisan connected")
@@ -185,22 +221,25 @@ class EarSession:
 
     def _register_crack(self, crack):
         """Attach roast time and arming to a crack, feed the FC rule, alert."""
-        elapsed = None
-        if self.charge_epoch is not None:
-            elapsed = crack["epoch"] - self.charge_epoch
+        elapsed = self._rule_elapsed(crack["epoch"])
         armed = (elapsed is not None and self.tracker.armed_at is not None
                  and elapsed >= self.tracker.armed_at)
-        crack["elapsed"] = round(elapsed, 1) if elapsed is not None else None
+        # Only a real CHARGE clock gives honest elapsed values for the sidecar
+        honest = elapsed is not None and self.charge_epoch is not None
+        crack["elapsed"] = round(elapsed, 1) if honest else None
         crack["armed"] = armed
         with self._lock:
             self.cracks.append(crack)
         if armed:
             fc = self.tracker.add(elapsed, crack["epoch"])
             if fc is not None:
+                when = (f"T+{ear_display.fmt_time(fc['elapsed'])}" if self.charge_epoch is not None
+                        else "now (no CHARGE clock)")
                 print(f"  FC rule: {fc['count_in_window']} cracks in {fc['window_s']:.0f}s "
-                      f"-> first crack at T+{ear_display.fmt_time(fc['elapsed'])}")
+                      f"-> first crack at {when}")
                 if not self.record_only:
-                    alert.announce_fc(fc, self.tracker.cracks_per_minute(elapsed))
+                    shown = fc if self.charge_epoch is not None else {**fc, "elapsed": None}
+                    alert.announce_fc(shown, self.tracker.cracks_per_minute(elapsed))
 
     def _elapsed(self):
         if self.charge_epoch is None:
@@ -250,34 +289,63 @@ class EarSession:
         # (Artisan writes the new one a few seconds after sending OFF), and
         # every sidecar got linked one roast back.
         since = self.charge_epoch or (self.capture.start_epoch if self.capture else None) or time.time() - 3600
+        # Artisan saves when the operator says so, not at OFF: batch #24 on
+        # 2026-09-13 was saved 2.5 min after OFF (notes typed first) and a
+        # 30 s poll missed it. Wait up to EAR_LINK_WAIT_S; Ctrl-C skips.
+        wait_s = int(_env_float("EAR_LINK_WAIT_S", 300))
         last_mtime = None
-        for _ in range(30):
-            fresh = [p for p in save_path.glob("*.alog") if p.stat().st_mtime >= since]
-            if fresh:
-                newest = max(fresh, key=lambda p: p.stat().st_mtime)
-                mtime = newest.stat().st_mtime
-                if mtime == last_mtime:
-                    try:
-                        raw = ast.literal_eval(newest.read_text(encoding="utf-8"))
-                        self.roast_uuid = raw.get("roastUUID", "") or ""
-                        self.batch_nr = raw.get("roastbatchnr", 0) or 0
-                        print(f"  Linked to .alog: #{self.batch_nr} {raw.get('title', '')} "
-                              f"(UUID {self.roast_uuid[:8]}...)")
-                        return True
-                    except (ValueError, SyntaxError, OSError):
-                        pass  # still being written; retry
-                last_mtime = mtime
-            time.sleep(1)
-        print("  Warning: no .alog written since this session started; not linked")
+        try:
+            for i in range(wait_s):
+                fresh = [p for p in save_path.glob("*.alog") if p.stat().st_mtime >= since]
+                if fresh:
+                    newest = max(fresh, key=lambda p: p.stat().st_mtime)
+                    mtime = newest.stat().st_mtime
+                    if mtime == last_mtime:
+                        try:
+                            raw = ast.literal_eval(newest.read_text(encoding="utf-8"))
+                            self.roast_uuid = raw.get("roastUUID", "") or ""
+                            self.batch_nr = raw.get("roastbatchnr", 0) or 0
+                            print(f"  Linked to .alog: #{self.batch_nr} {raw.get('title', '')} "
+                                  f"(UUID {self.roast_uuid[:8]}...)")
+                            return True
+                        except (ValueError, SyntaxError, OSError):
+                            pass  # still being written; retry
+                    last_mtime = mtime
+                elif i and i % 30 == 0:
+                    print(f"  Waiting for Artisan to save the .alog ({i}s; Ctrl-C to skip the link)")
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("  Link skipped; sidecar stays unlinked (matched by date/time instead)")
+            return False
+        # Say what was there, so a failed link (batch #24, 2026-09-13) can be
+        # diagnosed from the terminal afterwards
+        stamp = lambda t: time.strftime("%H:%M:%S", time.localtime(t))
+        existing = list(save_path.glob("*.alog"))
+        if existing:
+            newest = max(existing, key=lambda p: p.stat().st_mtime)
+            print(f"  Warning: no .alog written since {stamp(since)}; newest in {save_path} is "
+                  f"{newest.name} from {stamp(newest.stat().st_mtime)}. Not linked")
+        else:
+            print(f"  Warning: no .alog files in {save_path}; not linked")
         return False
 
     def _build_sidecar(self):
         """The sidecar dict (schema in CLAUDE.md, 'Ear' section)."""
         with self._lock:
             cracks = list(self.cracks)
+        # With a provisional clock the rule's elapsed figures are relative to
+        # a guessed CHARGE — leave them out; the epochs carry the real timing
+        provisional = self.charge_epoch is None and self.rule_epoch is not None
         armed = None
         if self.tracker.armed_at is not None:
-            armed = {"elapsed": round(self.tracker.armed_at, 1), "source": self.tracker.armed_source}
+            armed = {"elapsed": None if provisional else round(self.tracker.armed_at, 1),
+                     "source": self.tracker.armed_source}
+        fc_detected = self.tracker.finalize()
+        if fc_detected and provisional:
+            fc_detected = dict(fc_detected)
+            for key in ("elapsed", "first_crack_elapsed", "declared_at_elapsed", "peak_cpm_elapsed"):
+                fc_detected[key] = None
+            fc_detected["clock"] = "provisional"
         capture = None
         if self.capture is not None:
             stats = self.capture.stats()
@@ -308,7 +376,7 @@ class EarSession:
             "capture_error": self.capture_error,
             "fc_rule": self.tracker.rule(),
             "cracks": cracks,
-            "fc_detected": self.tracker.finalize(),
+            "fc_detected": fc_detected,
             "notes": self.notes,
         }
 
@@ -352,12 +420,15 @@ class EarSession:
         self._finalized = True
         self.running = False
         self.stop_capture()
-        if self.off_received:
-            self._link_alog()
+        # Save and push first, so the sidecar exists on the dev machine even
+        # if the (possibly minutes-long) wait for Artisan's save is cut short
         path = self._save_sidecar()
         print(f"  Sidecar saved: {path}")
         self._push([path])
         self._push_wav_once()
+        if self.off_received and self._link_alog():
+            self._save_sidecar()
+            self._push([path])
 
     # ---- display ----
 

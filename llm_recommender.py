@@ -114,7 +114,17 @@ crash agree within ~15s, treat that as the true FC and the operator's mark as \
 off by the offset; when they disagree, trust audio for the onset and the curve \
 for the thermal effect, and say FC timing is uncertain. Prefer audio over the \
 by-ear mark on this quiet bean. "Not declared" with few cracks after arming \
-means the microphone missed it (placement/gain), not that FC never happened.
+means the microphone missed it (placement/gain), not that FC never happened. \
+"Rule re-run offline" means the ear had no live roast clock (it started after \
+CHARGE) and the verdict was rebuilt from the recording afterwards — it is as \
+trustworthy as a live one.
+
+ambient_temp (F, when recorded) is the air temperature where the roaster sat: \
+outdoors until the weather turns cold, then a garage. The operator runs a \
+fixed time-based heater schedule, and on a cooler day the same moves deliver \
+heat more slowly — DRY and FC land later at the same clock times. Compare \
+roasts across dates with that in mind, and say when a shift in FC time looks \
+like weather rather than technique.
 
 If DATA QUALITY WARNINGS are listed, treat the affected metrics as unreliable: \
 skip or hedge advice that depends on them, and if the problem blocks analysis \
@@ -159,6 +169,7 @@ def _curated_metrics(metrics):
         "fc_bt", "fc_time", "drop_bt", "drop_time",
         "ror_at_fc", "dry_phase_ror", "mid_phase_ror", "dev_phase_ror",
         "heat_adjustments", "weight_in", "weight_out", "weight_loss_pct",
+        "ambient_temp", "ambient_humidity",
     ]
     out = {k: metrics.get(k) for k in keys if metrics.get(k) not in (None, 0)}
     # heat_adjustments is the one metric where 0 is a meaningful fact (zero
@@ -287,6 +298,8 @@ def _prior_block(prior_roasts):
             facts.append(f"{m['weight_loss_pct']:g}% loss")
         if m.get("heat_adjustments") is not None:
             facts.append(f"{m['heat_adjustments']} heater moves")
+        if m.get("ambient_temp"):
+            facts.append(f"ambient {m['ambient_temp']:g}F")
         ror_bits = [b for b, flag in (
             (p.get("ror_severity", ""), True),
             ("FC crash", p.get("fc_crash")),

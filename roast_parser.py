@@ -71,6 +71,10 @@ def extract_roast_data(raw):
         "weight_unit": raw.get("weight", [0, 0, "g"])[2],
         "roaster": raw.get("machinesetup", raw.get("roastertype", "")),
         "mode": raw.get("mode", "F"),  # F or C
+        # Ambient conditions typed into Artisan's Roast Properties dialog
+        # (0 when the operator left them blank). Same unit as `mode`.
+        "ambient_temp": raw.get("ambientTemp", 0) or 0,
+        "ambient_humidity": raw.get("ambient_humidity", 0) or 0,
 
         # Time arrays
         "timex": timex,

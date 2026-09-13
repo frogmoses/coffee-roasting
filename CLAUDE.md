@@ -387,6 +387,23 @@ Artisan and treats recording start as CHARGE (bench tests); an explicit
 bench runs can declare. `run_ear` lets variables already in the environment
 override `ear.conf`, so inline overrides such as `EAR_CAPTURES_DIR=/tmp/x`
 work. Ctrl-C finalizes.
+**Late start.** If DRY or FCs arrives before any CHARGE (the ear was started
+after the charge — batch #25 on 2026-09-13 came up 136 s late after two
+false starts and never armed a single crack), `_adopt_late_clock()` sets a
+provisional `rule_epoch` = now - `ARM_FALLBACK_S`, arms the rule, and counts
+cracks from there so FC can still be declared live (alert says "now"). The
+sidecar then carries `charge_source: "missing"`, `charge_epoch: null`, and
+null `elapsed` on cracks/armed/fc_detected (`clock: "provisional"`), keeping
+the epochs so `crack_loader` re-anchors from the .alog's `roastepoch`.
+**DROP is optional.** Artisan's DROP button runs Hottop commands (flap,
+stirrer, heat off, fan) and cannot also send a WebSocket message, so no
+sidecar has a drop event; the sidecar is first saved at OFF and the
+recording runs to OFF (a longer WAV, nothing else). Don't wire it. At OFF the
+sidecar is saved and pushed unlinked first, then `_link_alog` waits up to
+`EAR_LINK_WAIT_S` (default 300 s; Ctrl-C skips) for Artisan's save — the
+operator saves after typing notes, and batch #24 on 2026-09-13 was saved 2.5
+min after OFF, past the old 30 s poll — and re-pushes once linked. A failed
+link prints the newest .alog and its mtime against the session start.
 Sidecar `ear/captures/crack_YYYY-MM-DD_HHMM.json`: session_id, bean, roast_uuid,
 batch_nr, mode, artisan_events (lowercase, s since CHARGE), charge_epoch,
 charge_source, armed {elapsed, source}, capture {device, sample_rate,
@@ -432,7 +449,16 @@ cracks_after_arm, peak_cpm, capture stats, details. Shown as `FC by audio:` in
 the summary under `FC by curve:`, passed to the LLM as `fc_audio_check` (prompt:
 audio + curve agreeing within ~15 s is the true FC; prefer audio over the
 by-ear mark; "not declared" with few cracks means the mic missed it), and
-carried into prior roasts as `fc_audio_offset`.
+carried into prior roasts as `fc_audio_offset`. When the sidecar has no live
+verdict, `extract_audio_data()` re-runs the same rate rule offline
+(`run_fc_rule()`, pure Python, params from the sidecar's `fc_rule`) over the
+re-anchored crack times, arming at the sidecar's arm time when it had a
+roast clock, else the .alog's DRY mark, else CHARGE+480 s
+(`_effective_arm()`); a verdict from this path is tagged
+`detected_source: "offline"` and shown as `[offline]`. Miss or hit,
+`peak_cpm`/`peak_cpm_time` (densest 20 s window, `peak_crack_rate()`) and
+`rule_cpm` say how close the recording came (batch #25, 2026-09-13: 18/min
+against the rule's 21/min).
 
 **Phases.** A (built): record-only + sidecar + rsync + tune.py + analyzer
 integration. B: tune defaults on the first recordings, add a real-FC excerpt
@@ -497,7 +523,14 @@ Extracted in `roast_metrics.extract_metrics()`:
 
 ### Extracted roast data fields
 
-`extract_roast_data()` (`roast_parser.py`) also pulls: `title`, `roastbatchnr`, `roastUUID`, `weight`, `machinesetup`/`roastertype`, `mode` (F/C), `roastingnotes`, `cuppingnotes`, `flavors`/`flavorlabels`, `heavyFC`, `lowFC`, `oily`, `tipping`, `scorching`.
+`extract_roast_data()` (`roast_parser.py`) also pulls: `title`, `roastbatchnr`, `roastUUID`, `weight`, `machinesetup`/`roastertype`, `mode` (F/C), `roastingnotes`, `cuppingnotes`, `flavors`/`flavorlabels`, `heavyFC`, `lowFC`, `oily`, `tipping`, `scorching`, and the Roast Properties
+ambient fields `ambientTemp` -> `ambient_temp`, `ambient_humidity` (0 when left
+blank). The roaster sits outdoors until the weather turns cold, then in a
+garage; ambient is carried into `metrics`, the summary box (`Ambient: 69F`),
+the LLM facts, and prior-roast lines, because on the fixed time-based
+schedule a cooler day delivers heat more slowly (DRY and FC land later:
+FC drifted 9:16 on 2026-07-31 -> ~11:00 on 2026-09-13 at 69F). Enter it in
+Artisan's Roast Properties so `scan --force` keeps it.
 
 ## find-coffee Integration
 
@@ -685,6 +718,7 @@ anymore. `detect_plateau()` is still used display-side by `_visual_summary()`.
 - `cupping_intake` dict (only when entered via `cupping --intake`/`--intake-json`; preserved across `--force`)
 - `warnings` list (data-quality warnings from `validate_metrics()`)
 - `metrics["fc_check"]` (curve-detected FC vs mark) and `metrics["fc_audio"]` (ear verdict; only when a sidecar matched)
+- `metrics["ambient_temp"]`, `metrics["ambient_humidity"]` (Artisan Roast Properties; 0 = not entered)
 - `source_file` (path to .alog)
 
 Loaded/saved by `load_history()`/`save_history()` in `analyze.py`.

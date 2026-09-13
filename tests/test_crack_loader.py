@@ -140,3 +140,43 @@ def test_scan_picks_up_sidecar(tmp_path, monkeypatch):
     history = json.loads((tmp_path / "history.json").read_text())
     fc_audio = history["1_Rwanda_2026-09-06"]["metrics"]["fc_audio"]
     assert fc_audio["detected_time"] == 588 and fc_audio["offset"] == -12
+
+
+def test_offline_rule_declares_fc_when_ear_had_no_clock(tmp_path):
+    # Batch #25, 2026-09-13: the ear joined after CHARGE, armed on DRY with a
+    # 0.0 arm time, and no crack was ever counted live. The loader re-anchors
+    # from epochs + roastepoch, arms at the .alog's DRY mark, and re-runs the
+    # rate rule (7 in 20 s) offline.
+    burst = [620, 622, 625, 627, 629, 632, 634, 636, 640]
+    cracks = [{"epoch": CHARGE_EPOCH + t, "elapsed": None, "peak_db": 12.0, "dur_ms": 3.0,
+               "flatness": 0.4, "armed": False} for t in [100, 400, 500] + burst]
+    path = _write_crack(tmp_path, "2026-09-06_1000", cracks=cracks, fc=None, charge_epoch=None,
+                        armed={"elapsed": 0.0, "source": "DRY"})
+    data = json.loads(path.read_text())
+    data["fc_rule"] = {"n": 7, "window_s": 20.0, "min_elapsed_s": 480.0}
+    roast = _roast_data(roast_epoch=CHARGE_EPOCH - 150)
+    roast["timex"] = [150.0 + i * 2 for i in range(400)]
+    audio = extract_audio_data(data, roast)
+    assert audio["detected_source"] == "offline"
+    assert audio["armed_at"] == 300 and audio["armed_source"].startswith("DRY")
+    assert audio["detected_time"] == 620 and audio["offset"] == 20
+    assert audio["cracks_after_arm"] == len(burst) + 2   # 400 and 500 are past DRY
+    assert audio["peak_cpm"] > 0
+    assert "rule re-run offline" in audio["details"]
+
+    # A trickle (drum clicks) never reaches 7 in 20 s -> still no verdict
+    sparse = [{"epoch": CHARGE_EPOCH + t, "elapsed": None, "armed": False} for t in range(500, 700, 15)]
+    path = _write_crack(tmp_path, "2026-09-06_1100", cracks=sparse, fc=None, charge_epoch=None,
+                        armed={"elapsed": 0.0, "source": "DRY"})
+    audio = extract_audio_data(json.loads(path.read_text()), roast)
+    assert audio["detected_time"] is None and audio["detected_source"] is None
+    assert audio["peak_cpm"] == 6.0 and audio["rule_cpm"] == 21
+    assert "densest 6/min" in audio["details"]
+
+
+def test_live_verdict_wins_over_offline_rule(tmp_path):
+    path = _write_crack(tmp_path, "2026-09-06_1000",
+                        cracks=[_crack(t) for t in (588, 590, 592, 594, 596, 598, 600, 602)],
+                        fc=_fc(588))
+    audio = extract_audio_data(json.loads(path.read_text()), _roast_data())
+    assert audio["detected_source"] == "live" and audio["detected_time"] == 588

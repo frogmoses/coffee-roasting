@@ -582,6 +582,13 @@ def extract_metrics(data):
         # Energy
         "auc": computed.get("AUC", 0),
 
+        # Ambient conditions at roast time (Artisan Roast Properties; 0 =
+        # not entered). The roaster sits outdoors until it gets cold, then
+        # in a garage, so the same time-based schedule delivers heat more
+        # slowly on a cool day.
+        "ambient_temp": data.get("ambient_temp", 0) or 0,
+        "ambient_humidity": data.get("ambient_humidity", 0) or 0,
+
         # Weight — Artisan reports weight_loss as 100% when weight-out was
         # never entered, which is garbage; zero it out unless out > 0
         "weight_in": computed.get("weightin", 0),

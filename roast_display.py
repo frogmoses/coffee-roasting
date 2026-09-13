@@ -127,6 +127,12 @@ def display_roast_summary(analysis):
     else:
         weight_str = f"Weight: {m.get('weight_in', 0)}g"
     lines.append(_box_row(weight_str, f"Total: {format_time(m.get('total_time', 0))}", w))
+    # Ambient conditions, only once they've been entered in Artisan
+    if m.get("ambient_temp"):
+        ambient = f"Ambient: {m['ambient_temp']:g}F"
+        if m.get("ambient_humidity"):
+            ambient += f", {m['ambient_humidity']:g}% RH"
+        lines.append(_box_row(ambient, "", w))
     lines.append(_box_separator(w))
 
     # Key temperatures
@@ -175,7 +181,9 @@ def display_roast_summary(analysis):
     if fc_audio:
         if fc_audio.get("detected_time") is None:
             lines.append(_box_row(
-                f"  FC by audio: not declared ({fc_audio.get('cracks_after_arm', 0)} cracks after arming)", "", w))
+                f"  FC by audio: none ({fc_audio.get('cracks_after_arm', 0)} armed cracks"
+                + (f", peak {fc_audio['peak_cpm']:.0f}/min, rule {fc_audio.get('rule_cpm', 0)}"
+                   if fc_audio.get("peak_cpm") else "") + ")", "", w))
         else:
             off = fc_audio.get("offset")
             if off is None:
@@ -187,8 +195,10 @@ def display_roast_summary(analysis):
             bt = f" @ {fc_audio['detected_bt']:.0f}F" if fc_audio.get("detected_bt") is not None else ""
             rate = f" ({fc_audio['peak_cpm']:.0f}/min)" if fc_audio.get("peak_cpm") else ""
             flag = "  ! check mark" if fc_audio.get("mark_suspect") else ""
+            # Verdict rebuilt from the recording when the ear had no live clock
+            how = " [offline]" if fc_audio.get("detected_source") == "offline" else ""
             lines.append(_box_row(
-                f"  FC by audio: {format_time(fc_audio['detected_time'])}{bt}, {rel}{rate}{flag}", "", w))
+                f"  FC by audio: {format_time(fc_audio['detected_time'])}{bt}, {rel}{rate}{flag}{how}", "", w))
     lines.append(_box_row(f"  Heat adjustments: {m.get('heat_adjustments', 0)}", "", w))
     ror_info = m.get("ror_smoothness", {})
     if ror_info.get("severity"):
