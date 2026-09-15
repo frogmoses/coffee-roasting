@@ -510,10 +510,10 @@
     "FC declaration lag ~18 s from the ear detector; start the 150 s dev clock from the machine's FCs mark, not the first audible crack."
   ],
   "exported": {
-    "at": "2026-09-14T20:35:42",
+    "at": "2026-09-14T20:43:03",
     "mode": "paired",
     "ear_latency_s": 18.4,
-    "manual_drop": false,
+    "manual_drop": true,
     "files": [
       "/home/brian/CodeProjects/coffee-roasting/beans/rwanda-rusizi-gaseke/alarms/profile-v2.alrm"
     ]
