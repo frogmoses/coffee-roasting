@@ -24,8 +24,15 @@ import json
 # a week, cached afterwards. One constant so every caller moves together.
 MODEL = "claude-opus-4-8"
 
-# Web search server tool variant for Opus 4.6+ (dynamic filtering built in).
+# Web search server tool variant for Opus 4.6+ / Sonnet 5 (dynamic filtering built in).
 WEB_SEARCH_TOOL = "web_search_20260209"
+# Research is a lookup, not a design: a smaller, faster model at low effort,
+# few searches, few rounds, and a hard per-request timeout so a slow run
+# fails soft (the dossier saves without the brief).
+RESEARCH_MODEL = "claude-sonnet-5"
+RESEARCH_EFFORT = "low"
+RESEARCH_MAX_ROUNDS = 2
+RESEARCH_TIMEOUT_S = 150.0
 
 
 def _import_sdk():
@@ -36,11 +43,13 @@ def _import_sdk():
     return anthropic, None
 
 
-def _call(anthropic, **kwargs):
+def _call(anthropic, timeout=None, **kwargs):
     """messages.create with the project's error mapping."""
     try:
-        client = anthropic.Anthropic()
+        client = anthropic.Anthropic(timeout=timeout) if timeout else anthropic.Anthropic()
         return client.messages.create(**kwargs), None
+    except anthropic.APITimeoutError:
+        return None, f"LLM call timed out after {timeout:.0f}s"
     except anthropic.AuthenticationError:
         return None, "no API credentials (set ANTHROPIC_API_KEY via the wrapper)"
     except anthropic.APIError as e:
@@ -88,12 +97,13 @@ def structured_call(system, user_content, schema, max_tokens=16000, effort="high
         return None, "could not parse model output as JSON"
 
 
-def research_call(system, user_content, max_uses=3, max_tokens=16000, model=MODEL,
-                  max_rounds=3):
+def research_call(system, user_content, max_uses=4, max_tokens=8000, model=RESEARCH_MODEL,
+                  max_rounds=RESEARCH_MAX_ROUNDS, timeout=RESEARCH_TIMEOUT_S):
     """One call with the web search tool. Returns ({"text", "urls"}, "ok") or (None, why).
 
     A `pause_turn` (the model paused mid-search) is continued by sending the
-    assistant content back, up to `max_rounds` times.
+    assistant content back, up to `max_rounds` times. Each request has its
+    own `timeout`; a timeout ends the research with whatever text arrived.
     """
     anthropic, err = _import_sdk()
     if err:
@@ -103,11 +113,13 @@ def research_call(system, user_content, max_uses=3, max_tokens=16000, model=MODE
     urls, texts = [], []
     for _ in range(max_rounds):
         response, err = _call(
-            anthropic, model=model, max_tokens=max_tokens,
-            thinking={"type": "adaptive"}, output_config={"effort": "medium"},
+            anthropic, timeout=timeout, model=model, max_tokens=max_tokens,
+            thinking={"type": "adaptive"}, output_config={"effort": RESEARCH_EFFORT},
             system=system, tools=tools, messages=messages,
         )
         if err:
+            if texts:
+                break            # keep what an earlier round produced
             return None, err
         if response.stop_reason == "refusal":
             return None, "model declined the research request"

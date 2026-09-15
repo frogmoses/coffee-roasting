@@ -306,7 +306,7 @@ Say when something could not be found. Do not invent numbers. Output the
 brief only: no preamble, no narration of your searching, nothing after the
 SOURCES list.
 """
-RESEARCH_MAX_SEARCHES = 5
+RESEARCH_MAX_SEARCHES = 4
 
 
 def research_bean(dossier, call=None):
