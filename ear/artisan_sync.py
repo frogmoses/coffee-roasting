@@ -82,6 +82,13 @@ EVENT_TO_PHASE = {
 }
 
 
+# What Artisan expects on its WebSocket port to mark FCs: the node names are
+# Artisan 4.0.0's defaults from artisanlib/wsport.py (pushMessage_node,
+# addEvent_message, data_node, event_node, FCs_node); the roaster's
+# [WebSocket] settings set only the port, so the defaults apply.
+FC_PUSH_MESSAGE = {"pushMessage": "addEvent", "data": {"event": "firstCrackBeginningEvent"}}
+
+
 class ArtisanServer:
     """WebSocket server that receives and tracks Artisan roast events."""
 
@@ -105,6 +112,11 @@ class ArtisanServer:
         # Server control
         self._server = None
         self._stop_event = asyncio.Event()
+        # The live client socket and the loop it runs on, so a push from
+        # another thread (the audio thread declares first crack) can be
+        # scheduled onto the loop with run_coroutine_threadsafe
+        self._websocket = None
+        self._loop = None
 
     def on_event(self, callback):
         """Register callback for roast events: callback(event_name, elapsed_seconds)."""
@@ -203,6 +215,7 @@ class ArtisanServer:
 
         self.connected = True
         self.data_request_count = 0
+        self._websocket = websocket
         if self._on_connect:
             self._on_connect()
 
@@ -232,11 +245,32 @@ class ArtisanServer:
             pass
         finally:
             self.connected = False
+            self._websocket = None
             if self._on_disconnect:
                 self._on_disconnect()
 
+    def push(self, message):
+        """Send a JSON message to the connected Artisan from any thread.
+
+        Returns True when a client is connected and the send was scheduled
+        (the send itself completes on the loop), False when nothing is
+        connected. Artisan's WebSocket port accepts pushes from the device
+        server; see push_fc() for the one this project uses.
+        """
+        ws, loop = self._websocket, self._loop
+        if ws is None or loop is None or loop.is_closed():
+            return False
+        asyncio.run_coroutine_threadsafe(ws.send(json.dumps(message)), loop)
+        return True
+
+    def push_fc(self):
+        """Mark first crack in Artisan (the FCs button, at the moment of the
+        push). Artisan honours it only while FCs is still unmarked."""
+        return self.push(FC_PUSH_MESSAGE)
+
     async def start(self):
         """Start the WebSocket server (async)."""
+        self._loop = asyncio.get_running_loop()
         self._stop_event.clear()
         self._server = await websockets.serve(
             self._handle_connection,

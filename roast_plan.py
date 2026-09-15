@@ -43,7 +43,7 @@ DEFAULT_POST_FC_RISE_F_PER_MIN = 9.5
 EJECT_MARGIN_F = 10
 
 
-def _same_bean(history, title):
+def same_bean(history, title):
     """All history entries for this bean title, ordered by (date, batch)."""
     name = (title or "").strip().lower()
     entries = [
@@ -54,7 +54,7 @@ def _same_bean(history, title):
     return entries
 
 
-def _fc_stats(entries):
+def fc_stats(entries):
     """FC time / BT statistics and post-FC rise rate across the bean's roasts."""
     fc_times = [e["metrics"]["fc_time"] for e in entries
                 if e.get("metrics", {}).get("fc_time", 0) > 0]
@@ -77,7 +77,7 @@ def _fc_stats(entries):
     }
 
 
-def _batch_position_shift(entries):
+def batch_position_shift(entries):
     """Mean FC-time shift of later same-day batches vs the day's first batch.
 
     Negative = later batches reach FC sooner (drum heat-soak). None if the
@@ -94,6 +94,10 @@ def _batch_position_shift(entries):
         first = day[0]["metrics"]["fc_time"]
         shifts += [e["metrics"]["fc_time"] - first for e in day[1:]]
     return mean(shifts) if shifts else None
+
+
+# Public names; the underscored aliases stay for older imports.
+_same_bean, _fc_stats, _batch_position_shift = same_bean, fc_stats, batch_position_shift
 
 
 def _base_schedule(anchor):
@@ -123,13 +127,28 @@ def _base_schedule(anchor):
     return {"start": start, "moves": pre}, post, None
 
 
-def build_contrast_plan(history, roast_id, dev_times=DEFAULT_DEV_TIMES):
+def _schedule_as_base(schedule):
+    """A designed schedule in the planner's base-schedule shape (moves with
+    rel_time from the expected time and BT from the trigger/expectation)."""
+    from roast_schedule import expected_seconds, expected_bt
+    moves = []
+    for mv in schedule.get("moves", []):
+        moves.append({"rel_time": expected_seconds(mv) or 0, "bt": expected_bt(mv),
+                      "control": mv["action"].capitalize(), "percentage": mv["value"], "marker": ""})
+    charge = schedule.get("charge") or {}
+    return {"start": {"heater": charge.get("heater"), "fan": charge.get("fan")}, "moves": moves}
+
+
+def build_contrast_plan(history, roast_id, dev_times=DEFAULT_DEV_TIMES, schedule=None):
     """Build a contrast set for the bean of `roast_id`.
 
     Args:
         history: Full roast history dict.
         roast_id: Anchor roast (its schedule is the shared recipe).
         dev_times: FC->DROP seconds for each batch, in the order to roast.
+        schedule: Optional designed schedule (roast_schedule.py); when given
+            its moves are the shared recipe instead of the anchor's logged
+            moves, and its own dev seconds anchor the bracket.
 
     Returns:
         Plan dict: bean, anchor batch, fc stats, base schedule, post-FC moves,
@@ -139,10 +158,15 @@ def build_contrast_plan(history, roast_id, dev_times=DEFAULT_DEV_TIMES):
     """
     anchor = history[roast_id]
     title = anchor.get("title", "")
-    entries = _same_bean(history, title) or [anchor]
-    stats = _fc_stats(entries)
-    shift = _batch_position_shift(entries)
-    base, post_fc, schedule_error = _base_schedule(anchor)
+    entries = same_bean(history, title) or [anchor]
+    stats = fc_stats(entries)
+    shift = batch_position_shift(entries)
+    if schedule:
+        base, post_fc, schedule_error = _schedule_as_base(schedule), [
+            {"control": m["action"].capitalize(), "percentage": m["value"],
+             "after_fc": m["trigger"]["seconds"]} for m in schedule.get("post_fc", [])], None
+    else:
+        base, post_fc, schedule_error = _base_schedule(anchor)
 
     fc_bt = stats["fc_bt_mean"] or anchor.get("metrics", {}).get("fc_bt", 0) or 360
     contrasts = []

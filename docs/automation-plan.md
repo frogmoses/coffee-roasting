@@ -1,9 +1,12 @@
 # Automated Roast Control from Recommendations
 
-**Status: on hold.** Nothing here gets built until there is a first good
-reference roast: a batch that cupped the way the bean is meant to taste,
-recorded in history with its cupping intake. The plan exists so the design
-does not have to be rediscovered. Written 2026-09-13.
+**Status: active (2026-09-14).** The "cupped reference roast" gate was
+replaced: the profile designer authors the first schedule from the bean
+dossier and the measured machine envelope, a validator bounds it, and the
+dev-machine Artisan Simulator runs the alarm set before a roast day. The
+reference roast now emerges from the cupping loop (a version the operator
+marks). The Hottop handshake tests passed the same day (see
+`docs/hottop-handshake-tests.md`, Results). Written 2026-09-13.
 
 ## Goal
 
@@ -38,7 +41,7 @@ DROP button, whose Hottop command is already
 | key | encoding |
 |---|---|
 | `alarmflags` | 1 enabled / 0 disabled |
-| `alarmguards`, `alarmnegguards` | 1-based row of the If Alarm / But Not guard, -1 none |
+| `alarmguards`, `alarmnegguards` | **0-based** row index of the If Alarm / But Not guard, -1 none (the dialog shows it 1-based; `alarms.py` subtracts 1 on entry and `canvas.py` indexes `alarmstate` with the stored value) |
 | `alarmtimes` | From event: 9 ON, -1 START, 0 CHARGE, 8 TP, 1 DRY END, 2 FC START, 3 FC END, 4 SC START, 5 SC END, 6 DROP, 7 COOL END, 10 If Alarm |
 | `alarmoffsets` | seconds after the From event (0 = not time-triggered) |
 | `alarmconds` | 0 `<`, 1 `>`, 2 `=`, 3 `≠` |
@@ -135,20 +138,25 @@ analyzer still sees the true onset and the mark's offset from it.
 | 3 | Structured schedule deltas in the recommender, validated, feeding step 1 | two clean sessions on step 1-2 | medium, most care |
 | 4 | Keep ON + warm-up alarms | Hottop test passes | config + a test day |
 
-## Open questions to settle on a roast day
+## Questions settled (2026-09-14)
 
-- **Does the Hottop obey Artisan after OFF without a power cycle?** Enable
-  Keep ON, press OFF after a roast, move the heater slider. If the machine
-  responds, step 4 is possible and the restart dance ends. If it ignores
-  commands until its ready screen, between-batch stays manual and only the
-  roast is automated.
-- **Exact WebSocket push names** on the roaster's Config → Ports → WebSocket
-  tab.
-- **Does a Slider alarm take effect while Artisan is in Hottop control
-  mode** the same way a hand-moved slider does? Expected yes; confirm on the
-  first alarm-driven cut.
-- **Auto CHARGE**: whether Artisan's auto-charge detection is reliable with
-  a 300F hot charge, which would remove the last button during a roast.
+- **The Hottop obeys Artisan after OFF without a power cycle**, with no
+  cooling countdown and no ready-screen rule (handshake tests, empty drum).
+  Releasing control (the CONTROL button) is what turns the machine off, so
+  the routine is: press CONTROL once per day, never again. Keep ON is not
+  needed: From-ON alarm rows fire on a manual ON, and with `autosaveflag=0`
+  Keep ON would reset an unsaved roast. COOL END stops the drum motor; the
+  warm-up rows start with an Event Button row pressing custom button 1
+  (Motor On).
+- **WebSocket push names** verified against `artisanlib/wsport.py` v4.0.0
+  defaults (the roaster sets only the port): `pushMessage` / `addEvent` /
+  `data` / `event` / `firstCrackBeginningEvent`, exactly as written above.
+  Artisan marks FCs only while `timeindex[2] == 0`.
+- **A Slider alarm acts like a hand-moved slider**: `processAlarm` calls
+  `moveslider` then `fireslideraction` (`canvas.py`), the same path as the
+  slider widget. An Event Button alarm's string is a comma-separated list of
+  1-based custom button numbers, optionally `N>value`.
+- **Auto CHARGE** remains untested; CHARGE stays a button.
 
 ## Risks
 

@@ -1,0 +1,525 @@
+{
+  "slug": "rwanda-rusizi-gaseke",
+  "bean": "Rwanda Rusizi Gaseke",
+  "version": 2,
+  "created_at": "2026-09-14T18:50:27",
+  "designer": {
+    "model": "claude-opus-4-8",
+    "status": "ok",
+    "repair_rounds": 0
+  },
+  "based_on": {
+    "kind": "design",
+    "borrowed_from": null,
+    "baseline": "measured staircase"
+  },
+  "schedule": {
+    "schedule_version": 1,
+    "charge": {
+      "bt": 300,
+      "heater": 100,
+      "fan": 0,
+      "why": "Measured charge state after the warm-up routine; heater maxed at charge is the proven start for this bean.",
+      "warmup": {
+        "preheat_bt": 370,
+        "cool_heater": 0,
+        "cool_fan": 100,
+        "charge_bt": 300
+      }
+    },
+    "moves": [
+      {
+        "id": "f10",
+        "trigger": {
+          "after": "CHARGE",
+          "seconds": 15
+        },
+        "action": "fan",
+        "value": 10,
+        "why": "Measured staircase: gentle airflow for chaff without stalling the early rise.",
+        "expect": {
+          "bt": 239
+        }
+      },
+      {
+        "id": "f20",
+        "trigger": {
+          "after": "CHARGE",
+          "seconds": 90
+        },
+        "action": "fan",
+        "value": 20,
+        "why": "Measured staircase: a touch more convection through drying.",
+        "expect": {
+          "bt": 178
+        }
+      },
+      {
+        "id": "h90",
+        "trigger": {
+          "bt": 262
+        },
+        "action": "heater",
+        "value": 90,
+        "why": "Measured staircase first ease-down; keeps the Maillard climb controlled.",
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 260
+        }
+      },
+      {
+        "id": "h80",
+        "trigger": {
+          "bt": 281
+        },
+        "action": "heater",
+        "value": 80,
+        "why": "Measured staircase; early enough to keep astringency down as this operator's history shows.",
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 311
+        }
+      },
+      {
+        "id": "h70",
+        "trigger": {
+          "bt": 303
+        },
+        "action": "heater",
+        "value": 70,
+        "why": "Measured staircase; steadies rate of rise heading toward FC.",
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 398
+        }
+      },
+      {
+        "id": "h60",
+        "trigger": {
+          "bt": 321
+        },
+        "action": "heater",
+        "value": 60,
+        "why": "Measured staircase; holds 60% into and through FC for the linear ~7.9 F/min post-FC rise, staying at/above the 40% floor.",
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 470
+        }
+      }
+    ],
+    "post_fc": [],
+    "drop": {
+      "after": "FCs",
+      "seconds": 150
+    },
+    "guards": {
+      "bt_ceiling": 398,
+      "fc_min_bt": 350,
+      "fc_popup_bt": 356
+    },
+    "predicted": {
+      "fc_time_s": 650,
+      "fc_bt": 360,
+      "drop_bt": 380,
+      "total_time_s": 800,
+      "confidence": "measured"
+    },
+    "changes_from_baseline": [
+      {
+        "what": "dev seconds",
+        "kind": "dev",
+        "from": 134,
+        "to": 150
+      }
+    ]
+  },
+  "predicted": {
+    "fc_time_s": 650,
+    "fc_bt": 360,
+    "drop_bt": 380,
+    "total_time_s": 800,
+    "confidence": "measured"
+  },
+  "flavor_hypothesis": "A balanced cup (needle off sour) with the raw-sugar/turbinado sweetness lifted above batch 23's faint 1 and a fuller body, low astringency, milk-chocolate finish with bright fruit flashes retained.",
+  "contrast_lever": {
+    "key": "dev_seconds",
+    "values": [
+      130,
+      150,
+      170
+    ],
+    "why": "Cup history shows balance and sweetness climb with development (batch 22@70s and 21@116s sour; 23@134s balanced but still thin). Bracketing dev finds where sweetness/body peak before it turns roasty."
+  },
+  "changes_from_baseline": [
+    {
+      "what": "development seconds",
+      "from": "134",
+      "to": "150",
+      "why": "Batch 23 at 134 s was the best cup (balanced) but sweetness only 1 and body 0; a modest +16 s builds Maillard-driven sweetness and body while staying City+ and off the roasty side."
+    }
+  ],
+  "validator": {
+    "errors": [],
+    "warnings": [
+      "f20: time trigger after TP; a BT trigger tracks the bean",
+      "h90: a lone 10% step is invisible in BT rate-of-rise for ~2 min",
+      "h80: a lone 10% step is invisible in BT rate-of-rise for ~2 min",
+      "h80: 51s after the previous heater move; under 60s the machine sees a ramp, not two cuts",
+      "h70: a lone 10% step is invisible in BT rate-of-rise for ~2 min",
+      "h60: a lone 10% step is invisible in BT rate-of-rise for ~2 min"
+    ],
+    "clamped": []
+  },
+  "envelope_snapshot": {
+    "bean": "Rwanda Rusizi Gaseke",
+    "count": 10,
+    "source_roasts": [
+      "21_Rwanda Rusizi Gaseke_2026-09-04",
+      "22_Rwanda Rusizi Gaseke_2026-09-04",
+      "23_Rwanda Rusizi Gaseke_2026-09-04",
+      "24_Rwanda Rusizi Gaseke_2026-09-13",
+      "25_Rwanda Rusizi Gaseke_2026-09-13",
+      "26_Rwanda Rusizi Gaseke_2026-09-13"
+    ],
+    "staircase": {
+      "start": {
+        "heater": 100.0,
+        "fan": null
+      },
+      "moves": [
+        {
+          "control": "fan",
+          "value": 10,
+          "median_time": 15.0,
+          "median_bt": 236.3,
+          "n": 6
+        },
+        {
+          "control": "fan",
+          "value": 20,
+          "median_time": 90.0,
+          "median_bt": 176.0,
+          "n": 6
+        },
+        {
+          "control": "heater",
+          "value": 90,
+          "median_time": 268.0,
+          "median_bt": 262.1,
+          "n": 6
+        },
+        {
+          "control": "heater",
+          "value": 80,
+          "median_time": 320.0,
+          "median_bt": 280.85,
+          "n": 6
+        },
+        {
+          "control": "heater",
+          "value": 70,
+          "median_time": 388.0,
+          "median_bt": 302.75,
+          "n": 6
+        },
+        {
+          "control": "heater",
+          "value": 60,
+          "median_time": 450.0,
+          "median_bt": 320.9,
+          "n": 6
+        }
+      ]
+    },
+    "median_curve": [
+      {
+        "time": 0,
+        "bt": 298.1
+      },
+      {
+        "time": 60,
+        "bt": 164.3
+      },
+      {
+        "time": 120,
+        "bt": 196.2
+      },
+      {
+        "time": 180,
+        "bt": 228.4
+      },
+      {
+        "time": 240,
+        "bt": 254.3
+      },
+      {
+        "time": 300,
+        "bt": 277.1
+      },
+      {
+        "time": 360,
+        "bt": 295.4
+      },
+      {
+        "time": 420,
+        "bt": 311.7
+      },
+      {
+        "time": 480,
+        "bt": 324.2
+      },
+      {
+        "time": 540,
+        "bt": 337.3
+      },
+      {
+        "time": 600,
+        "bt": 349.1
+      },
+      {
+        "time": 660,
+        "bt": 360.9
+      },
+      {
+        "time": 720,
+        "bt": 367.4
+      },
+      {
+        "time": 780,
+        "bt": 373.6
+      }
+    ],
+    "charge_bt": 300.2,
+    "tp_bt": 162.5,
+    "tp_time": 58.0,
+    "dry_time": 378.0,
+    "fc_stats": {
+      "count": 10,
+      "fc_time_mean": 633.4,
+      "fc_time_sd": 35.72170208710666,
+      "fc_time_min": 556.0,
+      "fc_time_max": 684.0,
+      "fc_bt_mean": 360.68,
+      "post_fc_rise": 7.886146118945453,
+      "post_fc_rise_measured": true
+    },
+    "fc_time": 633.4,
+    "fc_bt": 360.68,
+    "ror_at_fc": 10.55,
+    "heat_soak_shift": -21.0,
+    "ambient": [
+      {
+        "date": "2026-09-13",
+        "batch": 24,
+        "ambient_temp": 69.0,
+        "fc_time": 684.0
+      },
+      {
+        "date": "2026-09-13",
+        "batch": 25,
+        "ambient_temp": 69.0,
+        "fc_time": 666.0
+      },
+      {
+        "date": "2026-09-13",
+        "batch": 26,
+        "ambient_temp": 69.0,
+        "fc_time": 652.0
+      }
+    ],
+    "dev_history": [
+      {
+        "batch": 17,
+        "date": "2026-07-31",
+        "dev_s": 140.0,
+        "fc_bt": 365.6,
+        "drop_bt": 390.2,
+        "fc_time": 556.0,
+        "ambient_temp": null,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 18,
+        "date": "2026-08-24",
+        "dev_s": 160.0,
+        "fc_bt": 361.4,
+        "drop_bt": 384.8,
+        "fc_time": 636.0,
+        "ambient_temp": null,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 19,
+        "date": "2026-08-24",
+        "dev_s": 150.0,
+        "fc_bt": 365.0,
+        "drop_bt": 390.2,
+        "fc_time": 596.0,
+        "ambient_temp": null,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 20,
+        "date": "2026-08-24",
+        "dev_s": 152.0,
+        "fc_bt": 361.4,
+        "drop_bt": 379.4,
+        "fc_time": 606.0,
+        "ambient_temp": null,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 21,
+        "date": "2026-09-04",
+        "dev_s": 116.0,
+        "fc_bt": 348.8,
+        "drop_bt": 365.0,
+        "fc_time": 648.0,
+        "ambient_temp": null,
+        "balance": -2,
+        "astringency": 2,
+        "sweetness": 0,
+        "body": -1,
+        "preference": "na",
+        "drink_again": "no",
+        "notes": "Brewed as cupping bowl / immersion 6 days after roast. Balance: very sour, grass",
+        "cupped": true
+      },
+      {
+        "batch": 22,
+        "date": "2026-09-04",
+        "dev_s": 70.0,
+        "fc_bt": 360.2,
+        "drop_bt": 368.6,
+        "fc_time": 636.0,
+        "ambient_temp": null,
+        "balance": -2,
+        "astringency": 3,
+        "sweetness": 0,
+        "body": -1,
+        "preference": "worse",
+        "drink_again": "no",
+        "notes": "Brewed as cupping bowl / immersion 6 days after roast. Balance: very sour, grass",
+        "cupped": true
+      },
+      {
+        "batch": 23,
+        "date": "2026-09-04",
+        "dev_s": 134.0,
+        "fc_bt": 361.4,
+        "drop_bt": 375.8,
+        "fc_time": 654.0,
+        "ambient_temp": null,
+        "balance": 0,
+        "astringency": 1,
+        "sweetness": 1,
+        "body": 0,
+        "preference": "better",
+        "drink_again": "no",
+        "notes": "Brewed as cupping bowl / immersion 6 days after roast. Balance: balanced, neithe",
+        "cupped": true
+      },
+      {
+        "batch": 24,
+        "date": "2026-09-13",
+        "dev_s": 152.0,
+        "fc_bt": 357.8,
+        "drop_bt": 375.8,
+        "fc_time": 684.0,
+        "ambient_temp": 69.0,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 25,
+        "date": "2026-09-13",
+        "dev_s": 102.0,
+        "fc_bt": 362.6,
+        "drop_bt": 372.2,
+        "fc_time": 666.0,
+        "ambient_temp": 69.0,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 26,
+        "date": "2026-09-13",
+        "dev_s": 190.0,
+        "fc_bt": 362.6,
+        "drop_bt": 386.6,
+        "fc_time": 652.0,
+        "ambient_temp": 69.0,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      }
+    ],
+    "ear_latency_s": 18.4,
+    "ear_latency_n": 5,
+    "borrowed_from": null
+  },
+  "watch_for": [
+    "Heat-soak/ambient: later batches or a warmer day pull FC 15-35 s earlier; trust the BT-triggered cuts, not the clock.",
+    "Drop BT should land near 380F \u2014 if FC BT runs high, the 150 s dev could push past Full City; shorten dev rather than let it darken.",
+    "Astringency: if it returns, the h80 cut is the lever to move earlier next revision.",
+    "FC declaration lag ~18 s from the ear detector; start the 150 s dev clock from the machine's FCs mark, not the first audible crack."
+  ],
+  "exported": {
+    "at": "2026-09-14T18:51:46",
+    "mode": "paired",
+    "ear_latency_s": 18.4,
+    "manual_drop": true,
+    "files": [
+      "/home/brian/CodeProjects/coffee-roasting/beans/rwanda-rusizi-gaseke/alarms/profile-v2.alrm"
+    ]
+  },
+  "roasts": [],
+  "status": "exported",
+  "rationale": "The staircase is proven and I keep it untouched \u2014 it delivers balanced, low-astringency roasts at a controlled rate into FC. The only cup-argued lever is development: the sour/thin batches were all short (70-116 s), the one balanced batch was 134 s, and the roaster still didn't 'drink again' because sweetness and body were low. Nudging development to 150 s (well under the 180 s cap, drop ~380F under the 398F ceiling) should lift sweetness and body without darkening past Full City. The session brackets dev at 130/150/170 so the roaster can pin the sweet spot in one contrast.",
+  "roast_level_target": "City+"
+}

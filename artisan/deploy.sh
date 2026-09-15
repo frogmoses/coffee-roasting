@@ -6,6 +6,10 @@
 #   artisan/deploy.sh push   — install the repo copy on the roaster (Artisan must be closed)
 #   artisan/deploy.sh local  — install the repo copy into THIS machine's Artisan as a
 #                              development copy (paths rewritten, no roaster needed)
+#   artisan/deploy.sh push-alarms <bean-slug>
+#                            — copy beans/<slug>/alarms/*.alrm and the sheet to the
+#                              roaster (~/coffee-roasts/alarms/<slug>/); Artisan loads
+#                              a set via Config -> Alarms -> Load, so Artisan may run
 #
 # Requires DEPLOY_SSH_HOST (an ~/.ssh/config alias such as "roaster" or
 # user@host), like ear/deploy.sh. ARTISAN_CONF_REMOTE overrides the remote
@@ -25,6 +29,8 @@
 set -euo pipefail
 
 MODE="${1:-}"
+SLUG="${2:-}"
+REMOTE_ALARMS="${ARTISAN_ALARMS_REMOTE:-coffee-roasts/alarms}"
 if [[ "$MODE" != "local" ]]; then
     REMOTE="${DEPLOY_SSH_HOST:?Set DEPLOY_SSH_HOST to your roaster SSH alias or user@host}"
 fi
@@ -130,8 +136,19 @@ case "$MODE" in
         green "Pushed artisan/Artisan.conf -> $REMOTE:$REMOTE_CONF (backup .bak-$stamp)"
         yellow "Start Artisan on the roaster to load it."
         ;;
+    push-alarms)
+        [[ -n "$SLUG" ]] || { red "usage: $0 push-alarms <bean-slug>"; exit 2; }
+        BEAN_DIR="$HERE/../beans/$SLUG"
+        [[ -d "$BEAN_DIR/alarms" ]] || { red "No $BEAN_DIR/alarms; run analyze.py export-alarms first"; exit 1; }
+        ssh "$REMOTE" "mkdir -p '$REMOTE_ALARMS/$SLUG'"
+        rsync -a --include='*.alrm' --include='sheet-v*.html' --exclude='*' \
+            "$BEAN_DIR/alarms/" "$BEAN_DIR/" "$REMOTE:$REMOTE_ALARMS/$SLUG/"
+        green "Pushed beans/$SLUG alarms and sheets -> $REMOTE:~/$REMOTE_ALARMS/$SLUG/"
+        ssh "$REMOTE" "ls -1 '$REMOTE_ALARMS/$SLUG/'"
+        yellow "In Artisan: Config -> Alarms -> Load the .alrm for this session."
+        ;;
     *)
-        echo "usage: $0 pull|diff|push|local" >&2
+        echo "usage: $0 pull|diff|push|local|push-alarms <bean-slug>" >&2
         exit 2
         ;;
 esac

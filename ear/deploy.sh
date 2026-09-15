@@ -25,7 +25,7 @@ if [[ "${1:-}" == "--full" ]]; then
         "$LOCAL_DIR/" "$REMOTE:$REMOTE_DIR/"
 
     yellow "Creating venv and installing dependencies..."
-    ssh "$REMOTE" "source ~/.local/bin/env 2>/dev/null; cd $REMOTE_DIR && uv venv --python 3.12 -q && uv pip install -q numpy sounddevice 'websockets>=16'"
+    ssh "$REMOTE" "source ~/.local/bin/env 2>/dev/null; cd $REMOTE_DIR && uv venv --python 3.12 -q && uv pip install -q numpy sounddevice 'websockets>=16' pyserial"
     yellow "Reminder: libportaudio2 must be installed (sudo apt install libportaudio2);"
     yellow "settings live in $REMOTE_DIR/ear.conf (template ear.conf.example), loaded by ~/.local/bin/run_ear."
     green "Full deploy complete."

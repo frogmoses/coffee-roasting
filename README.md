@@ -1,9 +1,36 @@
 # Coffee Roasting with Hottop KN-8828B-2K+
 
-Roast analysis for a Hottop KN-8828B-2K+ run under Artisan. It reads the `.alog`
-roast logs, looks up the bean, and tells you what to change on the next roast,
-reasoning from roasting theory and how the coffee actually tasted rather than
-from fixed target curves.
+Roast analysis and profile design for a Hottop KN-8828B-2K+ run under Artisan.
+Given a bean, it researches it, designs a roast profile for this machine,
+exports the profile as an Artisan alarm set so the roast runs itself, reads the
+`.alog` logs afterwards to check that the machine did what the design said,
+and revises the profile from how the coffee tasted. Recommendations reason
+from roasting theory and the cup, not from fixed target curves.
+
+## A New Bean
+
+```bash
+run_roast-analyzer analyze.py dossier "Rwanda Rusizi Gaseke"      # research it
+run_roast-analyzer analyze.py profile "Rwanda Rusizi Gaseke" --design
+run_roast-analyzer analyze.py export-alarms "Rwanda Rusizi Gaseke" --manual-drop
+DEPLOY_SSH_HOST=roaster artisan/deploy.sh push-alarms rwanda-rusizi-gaseke
+```
+
+`dossier` pulls the find-coffee record and the supplier's product page (roast
+range, process, variety, altitude) into `beans/<slug>/dossier.json`; add
+`--research` to have the model search the web as well. `profile --design`
+has the model write version 1 of the bean's schedule inside what this Hottop
+has measurably done (the executed staircase, the median curve, first-crack
+statistics, heat-soak, ambient); a bean with no roasts here borrows the
+envelope of the most recent one. A validator bounds every design (10% grid,
+no heater rise, development 60-180 s, projected drop under 398F, and so on)
+and the measured staircase is the fallback if the model is unavailable.
+`export-alarms` writes the Artisan alarm set (`beans/<slug>/alarms/`) and
+the printable session sheet (`beans/<slug>/sheet-vN.html`); `--manual-drop`
+leaves the timed DROP out for a first session where you drop by hand.
+
+A version you built from a logged roast instead (`profile <bean>
+--from-roast 26`) is the no-model path: that roast's moves become the plan.
 
 ## After a Roast
 
@@ -36,8 +63,20 @@ run_roast-analyzer analyze.py cupping 21 --intake
 
 It asks how you brewed it, sour-or-roasty, astringency, sweetness, body, and
 whether it was better or worse than the last batch. The recommendations are
-regenerated on the spot from how the coffee tasted. Free text works too with
-`--notes "..."`.
+regenerated on the spot from how the coffee tasted, and the verdict is
+recorded on the profile version the roast ran on. Free text works too with
+`--notes "..."`. When the session's batches are cupped:
+
+```bash
+run_roast-analyzer analyze.py profile "Rwanda Rusizi Gaseke" --revise
+run_roast-analyzer analyze.py export-alarms "Rwanda Rusizi Gaseke"
+```
+
+`--revise` has the model write the next version from the verdicts, changing
+at most three things within small bounds so the next cup can be attributed
+to them; "roast it again" is a valid answer. When a batch tastes the way the
+bean is meant to, mark it: `profile <bean> --set-reference N --roast <id>`.
+Later revisions delta against the reference.
 
 Brew every batch you are comparing the same way. The Hario Switch recipe on
 the session sheet: 15 g medium grind, 250 g water at 94°C, switch closed, pour
@@ -47,16 +86,21 @@ sweetness holds all show in the cooler cup. Rest three to five days first.
 
 ## On Roast Day
 
-**Plan the batches.** Instead of repeating one recipe, roast a bracket:
+**Print the sheet.** `beans/<slug>/sheet-vN.html` is the day's page: what to
+load, the warm-up, the schedule with expected times and temperatures, the
+alarm table row by row, the batches, first-crack marking, the tasting
+recipe, and the intake. `plan --profile` prints the same bracket in the
+terminal.
 
-```bash
-run_roast-analyzer analyze.py plan
-```
-
-This prints a contrast set for the bean of your latest roast: the same moves
-through first crack, then three batches that differ only in seconds from first
-crack to drop, with projected drop temperatures and a safety-eject check. A
-printable session sheet lives in `docs/rwanda-contrast-session.html`.
+**Load the alarm set and press CONTROL once.** In Artisan: name the roast,
+Config -> Alarms -> Load the bean's `.alrm`, ON, right-click the timer LCD
+until it says super on, CONTROL once. Never press CONTROL again that day:
+releasing control turns the Hottop off (the old restart dance was that
+button). The From-ON rows run the warm-up (drum on, heater 100% to 370F,
+heater off and fan up to 300F, a pop-up says charge); you press START and
+CHARGE; the alarms make every move through first crack; a 398F row drops
+the beans if anything goes wrong. Between batches: DROP, COOL END, OFF,
+save, ON. The warm-up repeats on its own.
 
 **Let the roaster listen for first crack.** On the roaster laptop, once, before
 the first ON of the day:
@@ -71,9 +115,12 @@ seven cracks inside 20 seconds it prints a bold FIRST CRACK line in its own
 terminal and rings the bell. That alert lands 15 to 20 seconds after the burst
 begins, so treat it as confirmation: mark FCs at the first distinct crack you
 hear or at 363F, whichever comes first; mark immediately if the alert fires
-before you have; and do not mark below about 355F unless it has. The ear
-marks nothing in Artisan. On the next `full`, the summary shows **FC by
-audio** next to your mark.
+before you have; and do not mark below about 355F unless it has. With
+`--push-artisan` the ear marks FCs in Artisan itself when the rule declares
+(the exported DROP row is timed from that mark minus the ear's measured
+latency); without it the ear marks nothing. On the next `full`, the summary
+shows **FC by audio** next to your mark and, for a roast that ran on a
+profile, a **Designed vs Executed** box.
 
 Leave the ear running all day. Restart Artisan and the Hottop between batches
 as you normally do: the ear ignores the OFF from a restart, and after each
@@ -102,7 +149,14 @@ one they use the latest roast.
 | `show [id]` | Summary only: temps, phases, RoR, first crack by curve and audio |
 | `cupping <id> -i` | Guided tasting questions; regenerates recommendations |
 | `cupping <id> -n "…"` | Free-text tasting notes; regenerates recommendations |
-| `plan [id] --dev 150,90,210` | Contrast set for the next session (FC-to-drop seconds, roasting order) |
+| `dossier <bean> [--research] [--alias T]` | Research a bean into `beans/<slug>/dossier.json` (find-coffee + supplier page; `--research` adds a web brief) |
+| `profile <bean> --design` | The designer writes the next profile version from the dossier and the machine envelope |
+| `profile <bean> --revise` | The next version from the cupping verdicts (at most 3 bounded changes) |
+| `profile <bean> --from-roast <id> [--dev N]` | A version from a logged roast's moves, no model |
+| `profile <bean> [--version N]` | Show a version; `--set-reference N --roast <id>` marks the one that tasted right |
+| `export-alarms <bean> [--manual-drop] [--mode paired\|bt\|time] [--ear-latency S] [--no-warmup] [--install-local]` | Artisan `.alrm` + session sheet from the profile |
+| `sheet <bean> [--version N]` | Regenerate the session sheet |
+| `plan [id] --dev 150,90,210 [--profile]` | Contrast set for the next session (FC-to-drop seconds, roasting order); `--profile` uses the designed schedule |
 | `recommend [id] [-v]` | Recommendations and next-roast actions from the cache |
 | `compare [id1 id2]` | Two roasts side by side |
 | `list` | Every analyzed roast |
@@ -115,6 +169,8 @@ Ear commands run on the roaster as `run_ear ear.py <command>`:
 |---------|-------------|
 | `listen --bean X` | Record and log every roast of the day, with the terminal alert when first crack is declared |
 | `listen --bean X --record-only` | Same without the alert |
+| `listen --bean X --push-artisan` | Also mark FCs in Artisan when the rule declares (Phase D) |
+| `push-test` | Wait for Artisan to connect, push one FCs mark, exit (bench check) |
 | `listen --bean X --once` | Exit after one roast instead of waiting for the next |
 | `level` | Per-second input level and crack count, for mic and gain checks |
 | `devices` | List audio inputs |
@@ -213,10 +269,13 @@ environment variables:
   with button actions `send({"event": "ON"})`, `CHARGE`, `DRY`, `FCs`, and
   `OFF`. OFF is what lets the ear link its recording to the saved `.alog`.
   The DROP button keeps its Hottop commands (flap, stirrer, heat, fan); the
-  ear does not need a DROP event. The Hottop ignores Artisan until its own
-  cool-down reaches the ready screen, so the usual practice is to shut both
-  down and restart between batches to keep the drum hot; the ear tolerates
-  that.
+  ear does not need a DROP event. The Hottop often stops obeying Artisan
+  between batches, so the usual practice is to shut both down and restart
+  to keep the drum hot; the ear tolerates that. The cause is in Artisan's
+  driver (OFF keeps the Hottop connection while control is still on, and
+  control cannot be released above 350F); the empty-drum tests that settle
+  the right sequence, with the `run_ear hottop_probe.py` serial probe, are
+  in [docs/hottop-handshake-tests.md](docs/hottop-handshake-tests.md).
 
 ## Reference
 

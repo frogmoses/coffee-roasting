@@ -27,10 +27,8 @@ from roast_metrics import _fmt_time, build_curve_series
 from roast_narrative import build_control_timeline, format_narrative
 from hottop_reference import HOTTOP_CONTROLS
 from cupping_intake import INTAKE_LEGEND
-
-# Opus 4.8 — best reasoning, closest to a direct expert read of the log.
-# Runs a few times a week (once per new roast), cached after.
-MODEL = "claude-opus-4-8"
+from bean_dossier import dossier_block
+from llm_client import structured_call, MODEL  # noqa: F401 (MODEL re-exported)
 
 # Structured-output schema: the same rec shape the display layer already
 # expects ({priority, category, text, full_text?}) plus next_roast actions,
@@ -95,6 +93,16 @@ timeline shows the heater was already maxed — use the airflow and timing lever
 You may reference a metric's value as a fact ("development ran 2:30, ~20% of \
 the roast") and reason about whether that serves the bean's flavor — but frame \
 it as roasting judgment, not conformance to a number.
+
+When a DESIGNED PROFILE block is present, the heater/fan moves were executed \
+by Artisan alarms from a schedule the profile designer wrote (the operator \
+only charged and, unless told otherwise, marked first crack). Judge two \
+things there: did the machine execute the design (moves on time, at the \
+expected BT, development as planned), and did the design's predictions (FC \
+time and BT, drop BT) and its flavor hypothesis hold. Blame the design, not \
+the operator, for a move that fired as written; blame the recording or the \
+FCs mark for a drop timer that ran from a wrong mark. Phrase next-roast \
+actions as changes to the schedule (a cut earlier by N F, dev +/- N s).
 
 You are given a downsampled BT/RoR series for the roast. The RoR diagnostic \
 flags (crash/flick/rising) are machine-tuned heuristics — check them against \
@@ -200,24 +208,49 @@ def _curated_metrics(metrics):
 
 
 def _bean_block(bean_profile):
-    """Render bean profile context, if present."""
-    if not bean_profile:
-        return "No bean profile available."
-    parts = []
-    name = bean_profile.get("name")
-    if name:
-        parts.append(f"Bean: {name}")
-    notes = bean_profile.get("cupping_notes")
-    if notes:
-        parts.append(f"Professional cupping notes: {notes}")
-    dominant = bean_profile.get("dominant_flavors")
-    if dominant:
-        flav = ", ".join(f"{n} ({s})" for n, s in dominant)
-        parts.append(f"Dominant flavors: {flav}")
-    cupping = bean_profile.get("cupping_scores")
-    if cupping:
-        parts.append("Cupping scores: " + json.dumps(cupping))
-    return "\n".join(parts) if parts else "No bean profile available."
+    """Render bean context: a dossier when the bean has one, else the
+    find-coffee profile (same renderer, so the roast range and the full
+    flavor vector reach the model either way)."""
+    return dossier_block(bean_profile)
+
+
+def _execution_block(execution, profile_ref=None):
+    """Render the designed-vs-executed comparison for a profile-driven roast."""
+    if not execution:
+        return ""
+    lines = []
+    if profile_ref:
+        lines.append(f"Profile: {profile_ref.get('slug')} v{profile_ref.get('version')}")
+    for r in execution.get("moves", []):
+        name = f"{r['action']} {r['value']}%"
+        planned = _fmt_time(r.get("expected_s")) if r.get("expected_s") is not None else "?"
+        if r.get("expected_bt") is not None:
+            planned += f" / {r['expected_bt']:.0f}F"
+        if r.get("missed"):
+            lines.append(f"- {name}: planned {planned}, NOT executed")
+            continue
+        ran = _fmt_time(r.get("executed_s")) if r.get("executed_s") is not None else "?"
+        if r.get("executed_bt") is not None:
+            ran += f" / {r['executed_bt']:.0f}F"
+        delta = []
+        if r.get("delta_s") is not None:
+            delta.append(f"{r['delta_s']:+d}s")
+        if r.get("delta_f") is not None:
+            delta.append(f"{r['delta_f']:+d}F")
+        lines.append(f"- {name}: planned {planned}, ran {ran} ({', '.join(delta) or 'on plan'})")
+    for x in execution.get("extra", []):
+        lines.append(f"- unplanned {x['action']} {x['value']}% at {_fmt_time(x['at_s'])}")
+    d = execution.get("dev", {})
+    if d.get("designed_s") is not None:
+        lines.append(f"- development: designed {d['designed_s']}s, actual {d.get('actual_s') or '?'}s")
+    f = execution.get("fc", {})
+    if f.get("predicted_s"):
+        lines.append(f"- first crack: predicted {_fmt_time(f['predicted_s'])} @ {f.get('predicted_bt')}F, "
+                     f"actual {_fmt_time(f.get('actual_s') or 0)} @ {f.get('actual_bt')}F")
+    dr = execution.get("drop", {})
+    if dr.get("predicted_bt"):
+        lines.append(f"- drop: predicted {dr['predicted_bt']}F, actual {dr.get('actual_bt')}F")
+    return "\n".join(lines)
 
 
 def _visual_block(metrics):
@@ -323,7 +356,8 @@ def _prior_block(prior_roasts):
 
 
 def _build_user_content(metrics, data, bean_profile, narrative_text,
-                        cupping_notes="", warnings=None, prior_roasts=None):
+                        cupping_notes="", warnings=None, prior_roasts=None,
+                        execution=None, profile_ref=None, flavor_hypothesis=""):
     """Assemble the full analysis prompt body."""
     sections = []
     if warnings:
@@ -351,6 +385,11 @@ def _build_user_content(metrics, data, bean_profile, narrative_text,
         "BEAN PROFILE (what this bean is supposed to taste like):",
         _bean_block(bean_profile),
     ]
+    designed = _execution_block(execution, profile_ref)
+    if designed:
+        sections += ["", "DESIGNED PROFILE vs EXECUTION (Artisan alarms ran the moves):", designed]
+        if flavor_hypothesis:
+            sections += ["  The design's flavor hypothesis: " + flavor_hypothesis]
     observations = _observations_block(data)
     if observations:
         sections += ["", "OPERATOR OBSERVATIONS:", observations]
@@ -371,7 +410,8 @@ def _build_user_content(metrics, data, bean_profile, narrative_text,
 
 def generate_llm_recommendations(metrics, data, bean_profile=None,
                                  cupping_notes=None, warnings=None,
-                                 prior_roasts=None):
+                                 prior_roasts=None, execution=None,
+                                 profile_ref=None, flavor_hypothesis=""):
     """Generate recommendations + next-roast actions via Claude.
 
     Args:
@@ -385,17 +425,15 @@ def generate_llm_recommendations(metrics, data, bean_profile=None,
         warnings: Optional list of data-quality warnings from validate_metrics().
         prior_roasts: Optional list of compact prior-roast dicts (same bean)
             from roast_analysis.select_prior_roasts().
+        execution: Optional roast_schedule.compare_execution() result when
+            the roast ran on a designed profile; profile_ref names the
+            version and flavor_hypothesis is what the design expected.
 
     Returns:
         (result, status) where result is
         {"recommendations": [...], "next_roast": [...]} on success, or None on
         failure; status is a short human-readable string for the scan log.
     """
-    try:
-        import anthropic
-    except ImportError:
-        return None, "anthropic SDK not installed (uv add anthropic)"
-
     timeline = build_control_timeline(data)
     narrative_text = format_narrative(timeline)
     user_content = _build_user_content(
@@ -403,49 +441,13 @@ def generate_llm_recommendations(metrics, data, bean_profile=None,
         cupping_notes=cupping_notes or data.get("cupping_notes", ""),
         warnings=warnings,
         prior_roasts=prior_roasts,
+        execution=execution, profile_ref=profile_ref,
+        flavor_hypothesis=flavor_hypothesis,
     )
-
-    try:
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=MODEL,
-            # Covers adaptive thinking (which counts against max_tokens) plus
-            # the JSON output; 8000 risked truncation at effort "high".
-            max_tokens=16000,
-            thinking={"type": "adaptive"},
-            output_config={
-                "effort": "high",
-                "format": {"type": "json_schema", "schema": _OUTPUT_SCHEMA},
-            },
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_content}],
-        )
-    except anthropic.AuthenticationError:
-        return None, "no API credentials (set ANTHROPIC_API_KEY via the wrapper)"
-    except anthropic.APIError as e:
-        return None, f"LLM API error: {e}"
-    except Exception as e:  # network, unexpected SDK errors — fail soft
-        return None, f"LLM call failed: {e}"
-
-    if response.stop_reason == "refusal":
-        return None, "model declined to analyze this roast"
-
-    # Truncated output means broken JSON — report the real cause instead of
-    # letting it surface as a misleading parse failure.
-    if response.stop_reason == "max_tokens":
-        return None, "output truncated at max_tokens — raise max_tokens in llm_recommender.py"
-
-    # With adaptive thinking the first block may be a thinking block; the
-    # json_schema format guarantees the text block is valid JSON.
-    text = next((b.text for b in response.content if b.type == "text"), None)
-    if not text:
-        return None, "empty response from model"
-
-    try:
-        result = json.loads(text)
-    except ValueError:
-        return None, "could not parse model output as JSON"
-
+    result, status = structured_call(_SYSTEM_PROMPT, user_content, _OUTPUT_SCHEMA,
+                                     task="to analyze this roast")
+    if not result:
+        return None, status
     result.setdefault("recommendations", [])
     result.setdefault("next_roast", [])
     return result, "ok"

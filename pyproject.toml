@@ -15,6 +15,7 @@ ear = [
     "numpy",
     "sounddevice",
     "websockets>=16",
+    "pyserial",
 ]
 
 [tool.hatch.build.targets.wheel]

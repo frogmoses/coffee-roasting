@@ -1,0 +1,256 @@
+<title>Rwanda Rusizi Gaseke v1</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F6F5EF;
+    --paper-2: #ECEBE2;
+    --ink: #1F211C;
+    --ink-2: #4E5148;
+    --rule: #C7C8BC;
+    --coil: #B4542A;
+    --coil-soft: #F1DCCF;
+    --bean: #5F6E46;
+    --bean-soft: #DCE2CC;
+    --warn: #8C2F1D;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #191A17;
+      --paper-2: #232521;
+      --ink: #E9E7DD;
+      --ink-2: #A9AB9F;
+      --rule: #3C3E37;
+      --coil: #E48451;
+      --coil-soft: #3A2A21;
+      --bean: #A3B27E;
+      --bean-soft: #2A3122;
+      --warn: #E58A76;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #191A17;
+    --paper-2: #232521;
+    --ink: #E9E7DD;
+    --ink-2: #A9AB9F;
+    --rule: #3C3E37;
+    --coil: #E48451;
+    --coil-soft: #3A2A21;
+    --bean: #A3B27E;
+    --bean-soft: #2A3122;
+    --warn: #E58A76;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    font-size: 15.5px;
+    line-height: 1.5;
+  }
+  .sheet {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+  }
+  h1, h2, h3 {
+    font-family: "Bricolage Grotesque", "Arial Narrow", "Helvetica Neue", sans-serif;
+    text-wrap: balance;
+    margin: 0;
+  }
+  h1 { font-size: 2.4rem; font-weight: 700; line-height: 1.05; letter-spacing: -0.01em; }
+  h2 { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+  h3 { font-size: 1.05rem; font-weight: 700; }
+  p { margin: 0; max-width: 66ch; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  header { display: grid; gap: 0.6rem; padding-bottom: 1.5rem; border-bottom: 2px solid var(--ink); }
+  header .meta { display: flex; flex-wrap: wrap; gap: 0.4rem 1.6rem; color: var(--ink-2); font-size: 0.92rem; }
+  header .meta b { color: var(--ink); font-weight: 500; }
+
+  section { display: grid; gap: 0.9rem; padding: 1.6rem 0; border-bottom: 1px solid var(--rule); }
+  section:last-of-type { border-bottom: 0; }
+  .section-head { display: grid; gap: 0.25rem; }
+
+  .qa { display: grid; gap: 1rem; }
+  .qa .q { font-weight: 500; }
+  .qa .a { color: var(--ink-2); }
+  .qa .a strong { color: var(--ink); font-weight: 500; }
+
+  .steps { display: grid; gap: 0.6rem; margin: 0; padding-left: 1.4rem; }
+  .steps li { padding-left: 0.2rem; }
+  .steps li::marker { font-family: "IBM Plex Mono", monospace; color: var(--coil); font-weight: 500; }
+
+  .tablewrap { overflow-x: auto; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td { text-align: left; padding: 0.42rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 500; color: var(--ink-2); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  td.num, th.num { text-align: right; }
+  tr.fc td { border-top: 2px solid var(--coil); }
+  .tag {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 2px;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+  }
+  .tag.coil { background: var(--coil-soft); color: var(--coil); }
+  .tag.bean { background: var(--bean-soft); color: var(--bean); }
+
+  .callout {
+    border-left: 3px solid var(--coil);
+    background: var(--paper-2);
+    padding: 0.8rem 1rem;
+    display: grid;
+    gap: 0.3rem;
+  }
+  .callout .eyebrow { color: var(--coil); }
+
+  .checklist { display: grid; gap: 0.55rem; margin: 0; padding: 0; list-style: none; }
+  .checklist li { display: grid; grid-template-columns: 1.1rem 1fr; gap: 0.6rem; align-items: start; }
+  .checklist .box { width: 0.85rem; height: 0.85rem; border: 1.5px solid var(--ink-2); margin-top: 0.3rem; }
+  .checklist .opts { color: var(--ink-2); font-size: 0.9rem; }
+  .checklist .opts span { white-space: nowrap; }
+  .checklist .opts span + span::before { content: " · "; color: var(--rule); }
+
+  .cards { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+  .card { background: var(--paper-2); padding: 0.9rem 1rem; display: grid; gap: 0.35rem; }
+  .card .big { font-family: "Bricolage Grotesque", sans-serif; font-size: 1.6rem; font-weight: 700; line-height: 1; }
+  .card .big small { font-size: 0.9rem; font-weight: 500; color: var(--ink-2); }
+  .card .note { color: var(--ink-2); font-size: 0.9rem; }
+  .card.warn .big { color: var(--warn); }
+
+  .steps pre { margin: 0.4rem 0 0; }
+  pre {
+    margin: 0;
+    background: var(--paper-2);
+    padding: 0.7rem 0.9rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.84rem;
+    overflow-x: auto;
+  }
+  footer { padding-top: 1.4rem; color: var(--ink-2); font-size: 0.85rem; display: grid; gap: 0.3rem; }
+
+  @media print {
+    body { background: #fff; color: #000; font-size: 11pt; }
+    .sheet { max-width: none; padding: 0; }
+    section { break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+<div class="sheet">
+<header>
+<div class="eyebrow">Roast day sheet</div>
+<h1>Rwanda Rusizi Gaseke <small style="font-size:1rem;color:var(--ink-2)">profile v1</small></h1>
+<div class="meta">
+<span>Predicted FC <b>~10:33 at 361F</b> (measured)</span>
+<span>Measured FC <b>9:16 to 11:24</b> over 10 roasts</span>
+<span>Development <b>FC + 2:30</b>, drop ~380F</span>
+<span>Safety eject <b>408F</b></span>
+<span>Alarm set <b>profile-v1.alrm</b></span>
+</div></header>
+<section>
+<div class="section-head"><div class="eyebrow">Before the first charge</div><h2>Load the set, start the ear, let the warm-up run</h2></div>
+<ol class="steps">
+<li>Name the roast in Artisan (<strong>Rwanda Rusizi Gaseke</strong>) before you press ON, so the batch groups with its bean.</li>
+<li>Config &rarr; Alarms &rarr; Load <code>profile-v1.alrm</code>. Check the table matches the list below.</li>
+<li>Start the ear on the roaster: <code>run_ear ear.py listen --bean "Rwanda Rusizi Gaseke"</code>. One listen covers the day.</li>
+<li>ON, then right-click the timer LCD until the message bar says <strong>super on</strong>, then CONTROL once (<strong>Hottop control turned on</strong>). <strong>Never press CONTROL again today</strong>: releasing control turns the Hottop off.</li>
+<li>The alarms run the warm-up: drum motor on, heater 100% until BT reaches <strong>370F</strong>, then heater 0% and fan 100% until BT falls to <strong>300F</strong>, then fan 0% and heater 100% with a pop-up that says charge. Note the ET reading at that moment.</li>
+<li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack.</li>
+<li>Between batches: DROP, COOL END (the drum stops), OFF, save the profile, then ON again. The warm-up repeats on its own. Charge when BT is at the charge point <strong>and</strong> ET is within about 10F of the batch-1 reading.</li>
+</ol></section>
+<section>
+<div class="section-head"><div class="eyebrow">Schedule</div><h2>Every batch, from charge to first crack</h2></div>
+<div class="tablewrap"><table><thead><tr><th>When</th><th class="num">Expect BT</th><th>Move</th><th>Trigger</th><th>Why</th></tr></thead><tbody>
+<tr><td>0:00</td><td class="num">300F</td><td>CHARGE at 300F, heater 100%, fan 0%</td><td><span class="tag coil">you</span></td><td></td></tr>
+<tr><td>0:14</td><td class="num">234F</td><td>Fan -&gt; 10% at CHARGE + 0:14</td><td><span class="tag coil">clock</span></td><td>from the logged roast</td></tr>
+<tr><td>1:30</td><td class="num">178F</td><td>Fan -&gt; 20% at CHARGE + 1:30</td><td><span class="tag coil">clock</span></td><td>from the logged roast</td></tr>
+<tr><td>4:28</td><td class="num">266F</td><td>Heater -&gt; 90% at BT 266F</td><td><span class="tag bean">bean temp</span></td><td>from the logged roast</td></tr>
+<tr><td>5:20</td><td class="num">284F</td><td>Heater -&gt; 80% at BT 284F</td><td><span class="tag bean">bean temp</span></td><td>from the logged roast</td></tr>
+<tr><td>6:28</td><td class="num">306F</td><td>Heater -&gt; 70% at BT 306F</td><td><span class="tag bean">bean temp</span></td><td>from the logged roast</td></tr>
+<tr><td>7:30</td><td class="num">322F</td><td>Heater -&gt; 60% at BT 322F</td><td><span class="tag bean">bean temp</span></td><td>from the logged roast</td></tr>
+<tr class="fc"><td>FC+2:30</td><td class="num">380F</td><td>DROP at FC + 2:30</td><td><span class="tag coil">clock</span></td><td></td></tr>
+</tbody></table></div>
+<p class="a" style="color: var(--ink-2)">Times are expected, from the measured curve; a bean-temp trigger fires when BT gets there, or at the fallback time if it lags. On a cool day the clock moves land early in BT and first crack comes later; that is the weather, not the plan.</p>
+</section>
+<section>
+<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row</h2></div>
+<pre> 1. CHARGE BT &gt; 0F             -&gt; (marker, no action)
+ 2. ON +0:01                   -&gt; Event Button 1 (Motor On)  [unless #1]
+ 3. ON +0:03                   -&gt; Heater 100%  [unless #4]
+ 4. ON BT &gt; 370F               -&gt; Heater 0% *  [unless #1]
+ 5. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
+ 6. ON BT &lt; 300F               -&gt; Pop Up &#x27;CHARGE NOW (300F): heater 100, fan 0&#x27; *  [if #4, unless #1]
+ 7. ON BT &lt; 300F               -&gt; Fan 0%  [if #4, unless #1]
+ 8. ON BT &lt; 300F               -&gt; Heater 100%  [if #4, unless #1]
+ 9. CHARGE BT &lt; 256F           -&gt; (marker, no action)
+10. CHARGE +0:14               -&gt; Fan 10%
+11. CHARGE +1:30               -&gt; Fan 20%
+12. CHARGE BT &gt; 266F or +4:28  -&gt; Heater 90%  [if #9]
+13. CHARGE BT &gt; 284F or +5:20  -&gt; Heater 80%  [if #9]
+14. CHARGE BT &gt; 306F or +6:28  -&gt; Heater 70%  [if #9]
+15. CHARGE BT &gt; 322F or +7:30  -&gt; Heater 60%  [if #9]
+16. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
+17. CHARGE BT &gt; 350F           -&gt; (marker, no action)
+18. CHARGE BT &gt; 398F           -&gt; DROP *
+19. DROP +4:00                 -&gt; COOL END</pre>
+<p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
+</section>
+<section>
+<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>Design first, then the ends of the bracket</h2></div>
+<div class="cards">
+<div class="card"><div class="eyebrow">Batch 1 &middot; design</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="note">The designed development. Goes first, cold drum.</div></div>
+</div>
+</section>
+<section>
+<div class="section-head"><div class="eyebrow">First crack</div><h2>Mark it, then the timer runs</h2></div>
+<ol class="steps">
+<li>The ear rings its bell about 15-20 s after the first cracks; it is a confirmation, not the earliest signal. <strong>Mark FCs at the first distinct crack</strong> or at 363F BT, whichever comes first.</li>
+<li>Batch 1: start a stopwatch at FCs and press <strong>DROP at 2:30</strong> (that is 150 seconds, read the stopwatch as minutes:seconds).</li>
+<li>Drop early if BT reaches 400F; the 398F alarm will do it for you.</li>
+</ol></section>
+<section>
+<div class="section-head"><div class="eyebrow">At the table</div><h2>Taste for difference, not for words</h2></div>
+<ol class="steps">
+<li><strong>Rest 3 to 5 days</strong> before judging. At 24 hours every batch tastes flat and gassy in the Switch.</li>
+<li>Brew all batches in the Hario Switch the same way, back to back, cups labeled by batch number only. Recipe: <strong>15 g</strong> medium grind, <strong>250 g at 94°C</strong>, switch closed; pour 50 g and swirl at 0:00, fill to 250 g at 0:45, open the switch at 2:00, drained by about 3:00. Hot water throughout: no cool second pour, since that hides the roasty end of the scale.</li>
+<li>Taste each cup hot at about four minutes and again ten minutes later. Sourness, astringency, and whether sweetness holds all show up in the cooler cup.</li>
+<li><strong>Triangle first.</strong> Pour two cups of one batch and one of another, shuffle, and pick the odd one out. If you can, you have discrimination and only lack vocabulary. If you cannot, the bracket is too narrow, not your palate.</li>
+<li>Then taste in roasting order and answer the intake below for each. Preference is the signal. Naming why is optional.</li>
+</ol>
+<h3>Intake, one per batch</h3>
+<ul class="checklist">
+<li><span class="box"></span><div>Sour or bright ... or bitter or roasty?<div class="opts"><span>very sour</span><span>a little sour</span><span>balanced</span><span>a little roasty</span><span>very roasty / ashy</span></div></div></li>
+<li><span class="box"></span><div>Astringent, drying, aspirin-like?<div class="opts"><span>clean</span><span>slight drying</span><span>noticeable</span><span>harsh</span></div></div></li>
+<li><span class="box"></span><div>Sweetness?<div class="opts"><span>none</span><span>a hint</span><span>clearly sweet</span><span>syrupy</span></div></div></li>
+<li><span class="box"></span><div>Body?<div class="opts"><span>thin</span><span>medium</span><span>heavy</span></div></div></li>
+<li><span class="box"></span><div>Compared with the previous batch?<div class="opts"><span>worse</span><span>same</span><span>better</span></div></div></li>
+<li><span class="box"></span><div>Would you happily drink it again?<div class="opts"><span>yes</span><span>it&#x27;s fine</span><span>no</span></div></div></li>
+</ul>
+</section>
+<section>
+<div class="section-head"><div class="eyebrow">Afterward</div><h2>Feed it back</h2></div>
+<pre>run_roast-analyzer analyze.py full          # scan; each batch links to this profile and shows designed vs executed
+run_roast-analyzer analyze.py cupping &lt;batch&gt; --intake      # once per batch, after resting
+run_roast-analyzer analyze.py profile &quot;Rwanda Rusizi Gaseke&quot; --revise    # the next version from the cups
+run_roast-analyzer analyze.py export-alarms &quot;Rwanda Rusizi Gaseke&quot;      # its alarm set and sheet</pre>
+</section>
+<footer><span>Generated 2026-09-14 18:47 from profile v1, based on roast 26_Rwanda Rusizi Gaseke_2026-09-13</span>
+<span>! f20_89: time trigger after TP; a BT trigger tracks the bean</span>
+<span>! h90_267: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
+<span>! h80_319: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
+<span>! h80_319: 52s after the previous heater move; under 60s the machine sees a ramp, not two cuts</span>
+<span>! h70_387: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
+<span>! h60_449: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
+</footer></div>

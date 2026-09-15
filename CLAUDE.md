@@ -40,27 +40,37 @@ coffee-roasting/
 ├── roast_analysis.py       # Analysis orchestration, prior-roast selection, rec refresh, roast comparison
 ├── roast_narrative.py      # CHARGE->DROP control-timeline reconstruction (heater/fan moves)
 ├── cupping_intake.py       # Structured tasting questions (QUESTIONS, run_intake, intake_to_text, INTAKE_LEGEND)
-├── roast_plan.py           # Contrast-set planner: same recipe through FC, varied FC->DROP seconds
-├── llm_recommender.py      # LLM recommender: prompt assembly + claude-opus-4-8 structured call
-├── hottop_reference.py     # Static Hottop control reference fed to the LLM prompt
+├── roast_plan.py           # Contrast-set planner: same recipe through FC, varied FC->DROP seconds (or a designed schedule)
+├── roast_schedule.py       # Schedule shape {trigger, action, value}, validator, timeline/envelope -> schedule, execution check
+├── machine_envelope.py     # What this Hottop measurably does (staircase, median curve, FC stats, ear latency); borrow for a new bean
+├── bean_dossier.py         # Bean research: find-coffee + supplier page (+ optional web brief) -> beans/<slug>/dossier.json
+├── profile_designer.py     # LLM designs/revises a schedule inside the validator's rules; repair round; staircase fallback
+├── roast_profile.py        # Versioned profiles per bean (beans/<slug>/profile-vN.json), reference, roast links, verdicts
+├── alarm_export.py         # Schedule -> Artisan alarm rows -> .alrm (plural keys) / [Alarms] (singular keys)
+├── session_sheet.py        # Printable roast-day page from a profile version (beans/<slug>/sheet-vN.html)
+├── llm_client.py           # structured_call / research_call: the fail-soft Claude calls (MODEL lives here)
+├── llm_recommender.py      # LLM recommender: prompt assembly (incl. designed-vs-executed block) via llm_client
+├── hottop_reference.py     # HOTTOP_CONTROLS, HOTTOP_DYNAMICS (measured lag/heat-soak/ambient), OPERATOR_PREFS for the prompts
+├── beans/                  # Per-bean dossier, profile versions, reference.json, alarms/*.alrm, sheet-vN.html (committed)
 ├── roast_display.py        # Terminal formatting with Unicode box-drawing
 ├── coffee_lookup.py        # find-coffee API client with auto server lifecycle
 ├── sentinel_loader.py      # Session-JSON discovery/matching (shared), sentinel visual extraction
 ├── crack_loader.py         # Ear sidecar (crack_*.json) matching -> metrics["fc_audio"]
 ├── ear/                    # Roaster-side microphone first-crack detector (rsynced to the roaster)
-│   ├── ear.py                  # CLI: listen | level | devices | show | tune
+│   ├── ear.py                  # CLI: listen [--push-artisan] | level | devices | show | tune | push-test
 │   ├── crack_detector.py       # numpy click detector + FirstCrackTracker + DETECTOR_DEFAULTS
 │   ├── audio_capture.py        # sounddevice stream -> queue -> WAV (stdlib wave)
 │   ├── ear_session.py          # WS events, arming, sidecar, rsync, alert (sentinel.py analogue)
 │   ├── artisan_sync.py         # Artisan WebSocket server (copy of gopro/artisan_sync.py)
 │   ├── tune.py                 # Offline: WAV + .alog -> crack timeline, FC vs mark, sweeps
+│   ├── hottop_probe.py         # Hottop 2K+ serial probe (Artisan's 36-byte protocol, no Artisan; pyserial)
 │   ├── alert.py / ear_display.py / fake_artisan.py / deploy.sh / ear.conf.example
 │   └── captures/               # crack_*.json + crack_*.wav (gitignored)
 ├── .env.example            # Secret/env-var template (incl. ANTHROPIC_API_KEY); never commit .env
 ├── artisan_conf.py         # Read/write Artisan's Qt-INI settings file; decoded button/slider/alarm views; CLI
 ├── artisan/                # Artisan settings under version control
 │   ├── Artisan.conf            # Copy of roaster:~/.config/artisan-scope/Artisan.conf (the reviewed truth)
-│   └── deploy.sh               # pull | diff | push against the roaster; local = dev copy for this machine's Artisan
+│   └── deploy.sh               # pull | diff | push | local (dev copy) | push-alarms <slug> (beans/<slug>/alarms + sheets -> roaster)
 ├── tests/                  # pytest suite (run: uv run pytest tests/)
 ├── pyproject.toml          # Package config (requires-python >=3.10, deps: requests, anthropic; dev: pytest)
 ├── log-sync/               # Artisan log sync scripts for roaster machine
@@ -68,7 +78,7 @@ coffee-roasting/
 │   ├── artisan-sync.sh         # rsync to dev machine
 │   ├── artisan-sync.conf.example  # Config template (copy to .conf, fill in)
 │   └── artisan-sync.service    # systemd user unit
-├── docs/                   # Printable session sheets (rwanda-contrast-session.html; also published as an artifact)
+├── docs/                   # automation-plan.md (active), hottop-handshake-tests.md (+ results); rwanda-contrast-session.html is the retired hand-written sheet
 ├── roast-logs/             # .alog and .png files from Artisan (gitignored)
 ├── roast_history.json      # Persistent analysis results (gitignored)
 └── reference/              # Hottop PDF manuals (gitignored)
@@ -89,8 +99,18 @@ Dispatch table at the bottom of `analyze.py`. Each command maps to a `cmd_*` fun
 | `plan` | `cmd_plan()` | `build_contrast_plan()` -> `display_contrast_plan()`; deterministic, no LLM/network |
 | `list` | `cmd_list()` | `get_sorted_analyses()` -> `display_roast_list()` |
 | `bean` | `cmd_bean()` | `lookup_bean()` -> `extract_bean_profile()` -> `display_bean_profile()` |
+| `dossier` | `cmd_dossier()` | `_dossier_for()`: `load_dossier()` or `build_dossier()` (find-coffee + `fetch_product_page`) [+ `research_bean()`] -> `save_dossier()` |
+| `profile` | `cmd_profile()` | `--design`: `_design_version()` -> `envelope_for()` -> `design_profile()` (fallback `schedule_from_envelope()`) -> `save_profile()`; `--revise`: `_revise_version()` -> `revise_profile()`; `--from-roast`: `schedule_from_timeline()` -> `validate_schedule()`; `--set-reference`; else `display_profile()` |
+| `export-alarms` | `cmd_export_alarms()` | `schedule_to_alarms()` -> `write_alrm()` -> `mark_exported()` -> `render_sheet()`; `--install-local` -> `rows_to_conf()` into this machine's Artisan.conf |
+| `sheet` | `cmd_sheet()` | `render_sheet()` from the stored export settings |
 
-CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n`, `--intake/-i`, `--intake-json` (cupping), `--dev` (plan; comma-separated FC->DROP seconds in roasting order, default `150,90,210`), `--debug` (global; print traceback on errors).
+CLI flags: `--force` (scan/full), `--verbose/-v` (recommend/full), `--notes/-n`, `--intake/-i`, `--intake-json` (cupping), `--dev` (plan; comma-separated FC->DROP seconds in roasting order, default `150,90,210`), `--profile` (plan; the designed schedule as the recipe), `--debug` (global; print traceback on errors). Profile/alarm flags are listed in the README command table.
+
+Scan also links each roast to the profile version exported before it
+(`_profile_for_roast()` -> `roast_profile.match_profile_to_roast()`), passes
+it to `analyze_roast(profile=)` so `execution` (designed vs executed) reaches
+the LLM and history, and records the roast on the profile (`attach_roast`).
+`cupping` records the verdict on that version (`attach_verdict`).
 
 Roast ID resolution (`resolve_roast_id()`): exact match -> batch number -> partial name (case-insensitive, most recent roast wins on multiple matches).
 
@@ -351,6 +371,104 @@ step shows up in ET only after ~60-70s and is within BT-RoR noise for 2+
 minutes; identical manual schedules still spread FC by ~90s; later batches on
 the same day reach FC 15-35s sooner.
 
+## Profile-First Roasting (`roast_schedule.py`, `machine_envelope.py`, `bean_dossier.py`, `profile_designer.py`, `roast_profile.py`, `alarm_export.py`, `session_sheet.py`)
+
+Approved 2026-09-14 (plan: `~/.claude/plans/this-project-began-with-snug-fountain.md`).
+The system designs the roast; the operator loads, charges, marks first crack
+(until the ear pushes it), and tastes. The old "cupped reference roast first"
+gate of `docs/automation-plan.md` was replaced by validator + Simulator; the
+reference emerges from the loop (`profile --set-reference`).
+
+**Schedule** (`roast_schedule.py`): `{charge{bt,heater,fan,warmup}, moves[{id,
+trigger, expect, action, value, why}], post_fc[], drop{after:"FCs", seconds},
+guards{bt_ceiling 398, fc_min_bt 350, fc_popup_bt 356}, predicted{fc_time_s,
+fc_bt, drop_bt, confidence}}`. A trigger is `{"bt": F}` or `{"after":
+CHARGE|DRY|FCs, "seconds": N}`; `expect` is the twin in the other unit,
+filled from the envelope's median curve (`fill_expectations`,
+`time_at_bt`/`bt_at_time`). Fan moves are clock-triggered, heater cuts
+BT-triggered (`schedule_from_timeline`, `schedule_from_envelope`). DROP is
+FCs-relative only. `validate_schedule(schedule, envelope, prefs, baseline,
+max_changes)` -> `{ok, errors, warnings, clamped, schedule}`: 10% grid
+(clamped), heater never rises, step <= 30 (10 = warning), heater gap < 60 s
+warning / < 20 s error, fan <= 60, last heater >= 40, BT triggers >= TP+20F
+and < FC-5F, <= 8 pre-FC moves, dev 60-180 s (`DEV_CAP_S`, he hates dark
+roast), projected drop < 398F, and with a `baseline` at most `max_changes`
+(3 for revisions, 6 for a first design) each within `REVISION_BOUNDS`
+(+/-20F, +/-30 s, +/-20%, +/-30 s dev). `diff_schedules` pairs heater moves
+by level and fan moves by position. `compare_execution(schedule, timeline,
+metrics)` pairs designed moves with logged ones -> per-move deltas, missed,
+extra, dev/FC/drop predicted vs actual, `summary`. `RULES_TEXT` is the
+rules in words for the designer's prompt.
+
+**Envelope** (`machine_envelope.py`): `build_envelope(history, title)` re-parses
+the last 6 roasts of the bean: `staircase` (median time/BT per heater/fan
+level), `median_curve` (30 s buckets), charge/TP/DRY medians, `fc_stats`
+(from `roast_plan.fc_stats`), `heat_soak_shift`, `ambient`, `dev_history`
+with intake verdicts, `ear_latency_s` (median declared-minus-onset over the
+sidecars, default 18 s). `borrow_envelope` takes the most recent bean with
+>= 3 roasts for a new bean (`borrowed_from`); `envelope_for` chooses.
+
+**Dossier** (`bean_dossier.py`): find-coffee record + Sweet Maria's product
+page (stdlib HTML parser: process, region, variety, altitude, arrival, roast
+notes, a 6 KB excerpt) -> `beans/<slug>/dossier.json` with `roast_range`
+(`parse_roast_recommendation`, e.g. "City to Full City+") and
+`target_level` (lower-middle of the range, capped at Full City). Optional
+`research_bean` uses `llm_client.research_call` (web search tool, plain text
++ URLs). `dossier_block` renders the prompt block for both the designer and
+the recommender (which used to drop `attributes` and the 12-flavor vector);
+`find_dossier_for_title` matches Artisan titles via slug/aliases and scan
+prefers the dossier over a live lookup.
+
+**Designer** (`profile_designer.py`): `design_profile(dossier, envelope,
+prior_versions, baseline=staircase)` and `revise_profile(profile, dossier,
+envelope, verdicts, reference)` call `llm_client.structured_call` with
+`_DESIGN_SCHEMA` (schedule in the model's shape with `kind`-tagged triggers,
+predicted, roast_level_target, flavor_hypothesis, contrast_lever,
+watch_for, changes_from_baseline, rationale), a system prompt made of the
+stance + `RULES_TEXT` + `HOTTOP_CONTROLS` + `HOTTOP_DYNAMICS` +
+`OPERATOR_PREFS` + `INTAKE_LEGEND`, and a user prompt of dossier block,
+envelope JSON (borrowed note), baseline, prior versions with execution and
+verdicts, and the verdicts. `_to_schedule` converts, the validator bounds
+it, one repair round with the errors, then `(None, status)`; the CLI falls
+back to `schedule_from_envelope`. `_best_dev` picks the baseline dev from
+the best-cupped roast.
+
+**Profiles** (`roast_profile.py`): `beans/<slug>/profile-vN.json` (`new_profile`,
+`save_profile` numbers versions, `mark_exported`, `attach_roast`,
+`attach_verdict`, `set_reference`/`get_reference`, `match_profile_to_roast`
+= latest version exported before the roast's date/time; `ROAST_BEANS_DIR`
+overrides the root for tests). Status: draft -> exported -> roasted ->
+cupped -> reference / superseded.
+
+**Alarm export** (`alarm_export.py`, verified against Artisan 4.0.0
+`canvas.py`): a row fires on EITHER its time offset OR its temperature
+condition (so "BT > 262 or CHARGE+4:28" is one row); guards are stored
+0-based; From-ON rows evaluate while merely ON. Rows: a "roast started"
+marker (From CHARGE, BT > 0) that But-Not guards every From-ON warm-up row
+(motor on = Event Button "1", heater 100 at ON+3 s unless the preheat row
+fired, BT > 370 -> heater 0 + fan 100, BT < 300 If-Alarm that -> pop-up +
+fan 0 + heater 100); a "past the turning point" marker (BT < lowest trigger
+- 10) that If-Alarm guards the BT rows (BT falls from 300F first); clock
+rows for the fan moves; the 356F pop-up; an "FC possible" marker (BT > 350)
+guarding the post-FC rows and the DROP row (From FC START + dev - ear
+latency; omitted with `manual_drop`); BT > 398 -> DROP unconditional; COOL
+END at DROP + 240 s. `.alrm` = 11 plural keys (`write_alrm`/`read_alrm`);
+`rows_to_conf` writes the singular `[Alarms]` keys (>= 2 rows).
+`describe_rows` prints them 1-based like the dialog.
+
+**Sheet** (`session_sheet.py`): `render_sheet(profile, dossier, envelope,
+alarm_rows, batches, alarm_file)`; `batches_from_profile` orders the
+contrast set design-first. Exported and regenerated by `export-alarms`
+and `sheet`.
+
+**Roast day** (decided 2026-09-14): load the `.alrm`, ON, super-user,
+CONTROL once and never again (releasing control turns the Hottop off),
+warm-up by alarms, START + CHARGE by hand, first session with
+`--manual-drop` (FCs and DROP by hand), between batches DROP / COOL END /
+OFF / save / ON (no Keep ON: autosave is off and a manual ON fires the
+From-ON rows). Build order A-G and gates are in the plan file; step B is a
+dev-machine Artisan Simulator run with `export-alarms --install-local`.
+
 ## Ear: Microphone First-Crack Detector (`ear/`, `crack_loader.py`)
 
 The current bean cracks quietly and the operator marks FCs by ear; every
@@ -404,7 +522,20 @@ null `elapsed` on cracks/armed/fc_detected (`clock: "provisional"`), keeping
 the epochs so `crack_loader` re-anchors from the .alog's `roastepoch`.
 **Restart dance.** The operator restarts Artisan (and the Hottop) between
 batches rather than waiting for the Hottop's ready screen, to keep the drum
-hot. So an OFF that arrives before any CHARGE is a restart, not a roast: the
+hot. The driver-side cause is verified in Artisan 4.0.0 source
+(`docs/hottop-handshake-tests.md`): control is released only below 350F
+(silently refused above), OFF keeps the Hottop connection alive while
+control is on, RESET never touches it, ON reuses a surviving connection,
+and a CONTROL press that releases control stops the loop but leaves the
+dead object so ON cannot reconnect until Artisan exits. Whether the
+firmware also refuses commands until its ready screen is unmeasured;
+`ear/hottop_probe.py` (pyserial, same 36-byte frames as
+`artisanlib/hottop.py`, logs every frame incl. the undecoded bytes to
+`captures/hottop_probe_*.log`) exists to measure it with an empty drum,
+and `[Device] device_logging=true` in the repo settings makes Artisan log
+every frame to `~/.local/share/artisan-scope/Artisan/artisan.log`
+(800 KB rotation, ~20 min of frames). So an OFF that arrives before any
+CHARGE is a restart, not a roast: the
 ear drops that OFF and keeps listening, and on the next Artisan connect it
 discards the pre-roast recording (`_discard_capture`) so the WAV starts at
 the real ON. After a real roast (OFF received, linked, pushed) `run_session`
@@ -480,9 +611,16 @@ against the rule's 21/min).
 **Phases.** A (built): record-only + sidecar + rsync + tune.py + analyzer
 integration. B (done 2026-09-04): rule retuned to 7-in-20s on the first
 recordings; a real-FC regression fixture is still owed. C (done): alerts on
-by default, `--record-only` to silence. D (future, `--push-artisan`, default
-off): push FCs into Artisan — its push message format is ambiguous between
-the docs page and `artisanlib/wsport.py`; verify before building.
+by default, `--record-only` to silence. D (built 2026-09-14, `--push-artisan`
+or `EAR_PUSH_ARTISAN=1`, default off, never in record-only): when the rule
+declares, `ArtisanServer.push_fc()` sends `FC_PUSH_MESSAGE`
+(`{"pushMessage":"addEvent","data":{"event":"firstCrackBeginningEvent"}}`,
+Artisan 4.0.0's `wsport.py` defaults; the roaster sets only the port) from
+the audio thread via `run_coroutine_threadsafe` on the live socket; the
+sidecar records `fc_pushed {epoch, sent, latency_s}`. `ear.py push-test`
+waits for Artisan and pushes once (bench: local Artisan in Simulator mode).
+Artisan honours the push only while FCs is unmarked; the exported DROP row
+is `dev - ear_latency`. Not yet watched on the roaster.
 Open detector issue: every 2026-09-13 session clipped (59-94 blocks at
 -0 dBFS peak); check gain against the `level` command before the next tune.
 
@@ -808,6 +946,8 @@ anymore. `detect_plateau()` is still used display-side by `_visual_summary()`.
 - `metrics["fc_check"]` (curve-detected FC vs mark) and `metrics["fc_audio"]` (ear verdict; only when a sidecar matched)
 - `metrics["ambient_temp"]`, `metrics["ambient_humidity"]` (Artisan Roast Properties; 0 = not entered)
 - `source_file` (path to .alog)
+- `control_timeline` (`roast_narrative.build_control_timeline()` output, persisted so planners need not re-parse)
+- `profile_ref` `{slug, version}` and `execution` (`roast_schedule.compare_execution()`), only when the roast ran on an exported profile version
 
 Loaded/saved by `load_history()`/`save_history()` in `analyze.py`.
 

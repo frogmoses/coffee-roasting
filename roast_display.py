@@ -639,3 +639,169 @@ def display_contrast_plan(plan):
             lines += _wrap_rows("- " + note, w, prefix="  ", indent="    ")
     lines.append(_box_footer(w))
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------- profiles
+
+def display_profile(profile, envelope=None):
+    """Render a designed roast profile (roast_profile.py) as a printable box.
+
+    The schedule table comes from roast_schedule.schedule_rows(); each move
+    shows when it is expected, at what BT, the trigger kind, and its reason.
+    """
+    from roast_schedule import schedule_rows, fmt_mmss
+    w = 72
+    sched = profile.get("schedule", {})
+    status = profile.get("status", "draft")
+    lines = [_box_header(f"Roast Profile: {profile.get('bean', '?')}  v{profile.get('version', '?')}  [{status}]", w)]
+    based = profile.get("based_on") or {}
+    if based:
+        kind = based.get("kind", "")
+        if kind == "roast":
+            src = f"the logged moves of {based.get('roast_id')}"
+        elif kind == "revision":
+            src = f"v{based.get('version')} revised from its cupping" + (
+                f" (reference v{based['reference']})" if based.get("reference") else "")
+        elif kind == "design":
+            src = "designed against the measured staircase"
+        elif kind == "staircase":
+            src = "the measured staircase (designer unavailable)"
+        else:
+            src = kind
+        if based.get("borrowed_from"):
+            src += f", envelope borrowed from {based['borrowed_from']}"
+        lines += _wrap_rows("Based on: " + src, w, prefix=" ", indent="   ")
+    pred = profile.get("predicted") or sched.get("predicted") or {}
+    if pred:
+        conf = pred.get("confidence", "")
+        lines.append(_box_row(
+            f" Predicted: FC ~{fmt_mmss(pred.get('fc_time_s'))} @ {pred.get('fc_bt', '?')}F, "
+            f"drop ~{pred.get('drop_bt', '?')}F after {fmt_mmss(sched.get('drop', {}).get('seconds'))} dev"
+            + (f"  ({conf})" if conf else ""), "", w))
+    lines.append(_box_separator(w))
+    lines.append(_box_row(" Schedule (expected time from CHARGE, expected BT):", "", w))
+    for r in schedule_rows(sched, envelope):
+        bt = f"{r['bt']:.0f}F" if r.get("bt") is not None else ""
+        kind = {"bt": "BT", "time": "clock", "manual": "you"}.get(r["kind"], r["kind"])
+        lines.append(_box_row(f"  {r['when']:>7}  {bt:>5}  {r['text']}  [{kind}]", "", w))
+        if r.get("why"):
+            lines += _wrap_rows(r["why"], w, prefix="                 - ", indent="                   ")
+    warm = (sched.get("charge") or {}).get("warmup") or {}
+    if warm:
+        lines.append(_box_separator(w))
+        lines += _wrap_rows(
+            f"Warm-up: motor on, heater 100% to {warm.get('preheat_bt', 370)}F, then heater "
+            f"{warm.get('cool_heater', 0)}% / fan {warm.get('cool_fan', 100)}% down to "
+            f"{warm.get('charge_bt', 300)}F, heater 100%, fan 0%, charge.", w, prefix=" ", indent="   ")
+    guards = sched.get("guards") or {}
+    if guards:
+        lines += _wrap_rows(
+            f"Guards: pop-up at {guards.get('fc_popup_bt')}F, DROP timer only once BT > "
+            f"{guards.get('fc_min_bt')}F, DROP if BT > {guards.get('bt_ceiling')}F.", w, prefix=" ", indent="   ")
+    hyp = profile.get("flavor_hypothesis")
+    if hyp:
+        lines.append(_box_separator(w))
+        lines += _wrap_rows("Expect in the cup: " + hyp, w, prefix=" ", indent="   ")
+    lever = profile.get("contrast_lever")
+    if lever:
+        vals = ", ".join(str(v) for v in lever.get("values", []))
+        lines += _wrap_rows(f"Contrast set varies {lever.get('key')}: {vals}. {lever.get('why', '')}",
+                            w, prefix=" ", indent="   ")
+    for item in profile.get("watch_for") or []:
+        lines += _wrap_rows("Watch for: " + item, w, prefix=" ", indent="   ")
+    changes = profile.get("changes_from_baseline") or []
+    if changes:
+        lines.append(_box_separator(w))
+        lines.append(_box_row(" Changes from the baseline:", "", w))
+        for c in changes:
+            lines += _wrap_rows(f"{c.get('what')}: {c.get('from')} -> {c.get('to')}"
+                                + (f"  ({c['why']})" if c.get("why") else ""), w, prefix="  - ", indent="    ")
+    val = profile.get("validator") or {}
+    if val.get("warnings") or val.get("clamped"):
+        lines.append(_box_separator(w))
+        for c in val.get("clamped", []):
+            lines += _wrap_rows("clamped: " + c, w, prefix="  ", indent="    ")
+        for wmsg in val.get("warnings", []):
+            lines += _wrap_rows("! " + wmsg, w, prefix="  ", indent="    ")
+    roasts = profile.get("roasts") or []
+    if roasts:
+        lines.append(_box_separator(w))
+        lines.append(_box_row(" Roasted on this version:", "", w))
+        for r in roasts:
+            dev = f"dev {r['dev_s']:.0f}s" if r.get("dev_s") else "dev ?"
+            verdict = ""
+            intake = r.get("cupping_intake") or {}
+            if intake:
+                verdict = (f"  cup: balance {intake.get('balance')}, astr {intake.get('astringency')}, "
+                           f"{intake.get('preference') or ''} {intake.get('drink_again') or ''}").rstrip()
+            lines += _wrap_rows(f"#{r.get('batch_nr')} {r.get('roast_date')} {dev}"
+                                + (f"  {r['execution']}" if r.get("execution") else "") + verdict,
+                                w, prefix="  ", indent="    ")
+    exp = profile.get("exported")
+    if exp:
+        lines.append(_box_separator(w))
+        lines += _wrap_rows(f"Exported {exp.get('at', '')[:16]} mode {exp.get('mode')}"
+                            + (", DROP manual" if exp.get("manual_drop") else
+                               f", ear latency {exp.get('ear_latency_s')}s"),
+                            w, prefix=" ", indent="   ")
+    lines.append(_box_footer(w))
+    return "\n".join(lines)
+
+
+def display_alarm_rows(rows, title="Artisan alarm set"):
+    """Render exported alarm rows (alarm_export.describe_rows) in a box."""
+    from alarm_export import describe_rows
+    w = 72
+    lines = [_box_header(title, w)]
+    for line in describe_rows(rows):
+        lines += _wrap_rows(line, w, prefix=" ", indent="       ")
+    lines.append(_box_separator(w))
+    lines += _wrap_rows("* = beeps.  [if #N] fires only after row N; [unless #N] only if row N "
+                        "has not fired.  A row with both a BT and a time fires on whichever "
+                        "comes first.", w, prefix=" ", indent="   ")
+    lines.append(_box_footer(w))
+    return "\n".join(lines)
+
+
+def display_execution(execution):
+    """Render roast_schedule.compare_execution(): designed vs executed."""
+    from roast_schedule import fmt_mmss
+    w = 72
+    lines = [_box_header("Designed vs Executed", w)]
+    for r in execution.get("moves", []):
+        plan = f"{fmt_mmss(r.get('expected_s'))}"
+        if r.get("expected_bt") is not None:
+            plan += f"/{r['expected_bt']:.0f}F"
+        name = f"{r['action'].capitalize()} {r['value']}%"
+        if r.get("missed"):
+            lines.append(_box_row(f"  {name:<12} planned {plan:<12} MISSED", "", w))
+            continue
+        ran = f"{fmt_mmss(r.get('executed_s'))}"
+        if r.get("executed_bt") is not None:
+            ran += f"/{r['executed_bt']:.0f}F"
+        deltas = []
+        if r.get("delta_s") is not None:
+            deltas.append(f"{r['delta_s']:+d}s")
+        if r.get("delta_f") is not None:
+            deltas.append(f"{r['delta_f']:+d}F")
+        lines.append(_box_row(f"  {name:<12} planned {plan:<12} ran {ran:<12} {' '.join(deltas)}", "", w))
+    for x in execution.get("extra", []):
+        bt = f"/{x['bt']:.0f}F" if x.get("bt") is not None else ""
+        lines.append(_box_row(f"  unplanned: {x['action']} {x['value']}% at {fmt_mmss(x['at_s'])}{bt}", "", w))
+    lines.append(_box_separator(w))
+    d = execution.get("dev", {})
+    if d.get("designed_s") is not None:
+        actual = f"{d['actual_s']:.0f}s" if d.get("actual_s") else "?"
+        delta = f" ({d['delta_s']:+d}s)" if d.get("delta_s") is not None else ""
+        lines.append(_box_row(f"  Development: designed {d['designed_s']}s, actual {actual}{delta}", "", w))
+    f = execution.get("fc", {})
+    if f.get("predicted_s"):
+        lines.append(_box_row(
+            f"  First crack: predicted {fmt_mmss(f['predicted_s'])} @ {f.get('predicted_bt', '?')}F, "
+            f"actual {fmt_mmss(f.get('actual_s'))} @ {f.get('actual_bt') or '?'}F", "", w))
+    dr = execution.get("drop", {})
+    if dr.get("predicted_bt"):
+        lines.append(_box_row(f"  Drop: predicted {dr['predicted_bt']}F, actual {dr.get('actual_bt') or '?'}F", "", w))
+    lines += _wrap_rows(execution.get("summary", ""), w, prefix="  ", indent="    ")
+    lines.append(_box_footer(w))
+    return "\n".join(lines)

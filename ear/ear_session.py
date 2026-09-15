@@ -48,7 +48,7 @@ class EarSession:
 
     def __init__(self, bean_name=None, ws_port=8765, device=None, record_only=False,
                  record_now=False, arm_at=None, debug=False, captures_dir=None,
-                 detector_params=None, fc_rule=None):
+                 detector_params=None, fc_rule=None, push_artisan=None):
         self.bean_name = bean_name or "Unknown"
         self.ws_port = ws_port
         self.device_spec = device or os.environ.get("EAR_DEVICE", "Sound Blaster")
@@ -61,6 +61,13 @@ class EarSession:
         self.post_drop_s = _env_float("EAR_POST_DROP_S", 90)
         self.off_timeout_s = _env_float("EAR_OFF_TIMEOUT_S", 600)
         self.push_wav = os.environ.get("EAR_PUSH_WAV", "1") not in ("0", "false", "no", "")
+        # Push the FCs mark into Artisan when the rule declares (Phase D).
+        # Off unless asked: --push-artisan or EAR_PUSH_ARTISAN=1. Never in
+        # record-only mode. The alert stays either way.
+        if push_artisan is None:
+            push_artisan = os.environ.get("EAR_PUSH_ARTISAN", "0") in ("1", "true", "yes")
+        self.push_artisan = bool(push_artisan) and not record_only
+        self.fc_pushed = None
 
         self.session_id = time.strftime("%Y-%m-%d_%H%M")
         # A rolled-over session can start in the same minute as the one that
@@ -272,6 +279,13 @@ class EarSession:
                 if not self.record_only:
                     shown = fc if self.charge_epoch is not None else {**fc, "elapsed": None}
                     alert.announce_fc(shown, self.tracker.cracks_per_minute(elapsed))
+                if self.push_artisan and self.fc_pushed is None:
+                    sent = self.artisan.push_fc()
+                    self.fc_pushed = {"epoch": round(time.time(), 3), "sent": bool(sent),
+                                      "latency_s": round(time.time() - fc["epoch"], 1)
+                                      if fc.get("epoch") else None}
+                    print("  -> FCs pushed to Artisan" if sent
+                          else "  !! Artisan not connected; FCs NOT pushed (mark it yourself)")
 
     def _elapsed(self):
         if self.charge_epoch is None:
@@ -409,6 +423,7 @@ class EarSession:
             "fc_rule": self.tracker.rule(),
             "cracks": cracks,
             "fc_detected": fc_detected,
+            "fc_pushed": self.fc_pushed,
             "notes": self.notes,
         }
 

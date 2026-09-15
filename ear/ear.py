@@ -18,6 +18,7 @@ reads only os.environ.
 import argparse
 import os
 import sys
+import time
 
 
 def cmd_devices(args):
@@ -44,7 +45,41 @@ def cmd_listen(args):
         record_now=args.record_now,
         arm_at=args.arm_at,
         debug=args.debug,
+        push_artisan=args.push_artisan,
     )
+
+
+def cmd_push_test(args):
+    """Wait for Artisan to connect, push the FCs mark, exit.
+
+    A bench check of Phase D without a roast: start this, press ON in
+    Artisan (with the WebSocket device configured, e.g. in Simulator mode
+    with a profile loaded and START pressed), and watch FCs get marked.
+    """
+    import asyncio
+    import artisan_sync
+
+    async def run():
+        server = artisan_sync.ArtisanServer(port=args.port, debug=args.debug)
+        await server.start()
+        print(f"Waiting for Artisan on port {args.port} (press ON, then START)...")
+        deadline = time.time() + args.timeout
+        while not server.connected and time.time() < deadline:
+            await asyncio.sleep(0.2)
+        if not server.connected:
+            print("Artisan never connected.")
+            server.stop()
+            await server.wait_until_stopped()
+            return 1
+        await asyncio.sleep(args.delay)
+        sent = server.push_fc()
+        print("Pushed FCs" if sent else "Push failed (no client)")
+        await asyncio.sleep(1.0)
+        server.stop()
+        await server.wait_until_stopped()
+        return 0 if sent else 1
+
+    sys.exit(asyncio.run(run()))
 
 
 def cmd_level(args):
@@ -126,8 +161,16 @@ def main():
     p.add_argument("--record-now", action="store_true", help="start recording immediately (bench test)")
     p.add_argument("--arm-at", type=float, default=None, help="arm the FC rule N seconds after CHARGE (default: DRY event, else 300)")
     p.add_argument("--debug", action="store_true", help="log raw WebSocket messages")
+    p.add_argument("--push-artisan", action="store_true",
+                   help="mark FCs in Artisan when the rule declares (default off; also EAR_PUSH_ARTISAN=1)")
 
     sub.add_parser("show", help="summarize the latest sidecar")
+
+    pt = sub.add_parser("push-test", help="wait for Artisan, push the FCs mark once, exit")
+    pt.add_argument("--port", type=int, default=int(os.environ.get("EAR_PORT", "8765")))
+    pt.add_argument("--timeout", type=float, default=120.0, help="seconds to wait for Artisan")
+    pt.add_argument("--delay", type=float, default=3.0, help="seconds after connect before the push")
+    pt.add_argument("--debug", action="store_true")
 
     lv = sub.add_parser("level", help="print input level per second (jack/gain check)")
     lv.add_argument("--device", default=None)
@@ -143,6 +186,8 @@ def main():
         cmd_listen(args)
     elif args.command == "show":
         cmd_show(args)
+    elif args.command == "push-test":
+        cmd_push_test(args)
     elif args.command == "level":
         cmd_level(args)
     elif args.command == "tune":

@@ -1,0 +1,492 @@
+{
+  "slug": "rwanda-rusizi-gaseke",
+  "bean": "Rwanda Rusizi Gaseke",
+  "version": 1,
+  "created_at": "2026-09-14T18:35:27",
+  "designer": {
+    "model": null,
+    "status": "deterministic",
+    "repair_rounds": 0
+  },
+  "based_on": {
+    "kind": "roast",
+    "roast_id": "26_Rwanda Rusizi Gaseke_2026-09-13",
+    "borrowed_from": null
+  },
+  "schedule": {
+    "schedule_version": 1,
+    "charge": {
+      "heater": 100,
+      "fan": 0,
+      "bt": 300,
+      "warmup": {
+        "preheat_bt": 370,
+        "cool_heater": 0,
+        "cool_fan": 100,
+        "charge_bt": 300
+      }
+    },
+    "moves": [
+      {
+        "id": "f10_13",
+        "action": "fan",
+        "value": 10,
+        "why": "from the logged roast",
+        "trigger": {
+          "after": "CHARGE",
+          "seconds": 14
+        },
+        "expect": {
+          "bt": 234
+        }
+      },
+      {
+        "id": "f20_89",
+        "action": "fan",
+        "value": 20,
+        "why": "from the logged roast",
+        "trigger": {
+          "after": "CHARGE",
+          "seconds": 90
+        },
+        "expect": {
+          "bt": 178
+        }
+      },
+      {
+        "id": "h90_267",
+        "action": "heater",
+        "value": 90,
+        "why": "from the logged roast",
+        "trigger": {
+          "bt": 266
+        },
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 268
+        }
+      },
+      {
+        "id": "h80_319",
+        "action": "heater",
+        "value": 80,
+        "why": "from the logged roast",
+        "trigger": {
+          "bt": 284
+        },
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 320
+        }
+      },
+      {
+        "id": "h70_387",
+        "action": "heater",
+        "value": 70,
+        "why": "from the logged roast",
+        "trigger": {
+          "bt": 306
+        },
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 388
+        }
+      },
+      {
+        "id": "h60_449",
+        "action": "heater",
+        "value": 60,
+        "why": "from the logged roast",
+        "trigger": {
+          "bt": 322
+        },
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 450
+        }
+      }
+    ],
+    "post_fc": [],
+    "drop": {
+      "after": "FCs",
+      "seconds": 150
+    },
+    "guards": {
+      "bt_ceiling": 398,
+      "fc_min_bt": 350,
+      "fc_popup_bt": 356
+    },
+    "predicted": {
+      "fc_time_s": 633,
+      "fc_bt": 361,
+      "drop_bt": 380,
+      "confidence": "measured"
+    }
+  },
+  "predicted": {
+    "fc_time_s": 633,
+    "fc_bt": 361,
+    "drop_bt": 380,
+    "confidence": "measured"
+  },
+  "flavor_hypothesis": "",
+  "contrast_lever": null,
+  "changes_from_baseline": [],
+  "validator": {
+    "errors": [],
+    "warnings": [
+      "f20_89: time trigger after TP; a BT trigger tracks the bean",
+      "h90_267: a lone 10% step is invisible in BT rate-of-rise for ~2 min",
+      "h80_319: a lone 10% step is invisible in BT rate-of-rise for ~2 min",
+      "h80_319: 52s after the previous heater move; under 60s the machine sees a ramp, not two cuts",
+      "h70_387: a lone 10% step is invisible in BT rate-of-rise for ~2 min",
+      "h60_449: a lone 10% step is invisible in BT rate-of-rise for ~2 min"
+    ],
+    "clamped": []
+  },
+  "envelope_snapshot": {
+    "bean": "Rwanda Rusizi Gaseke",
+    "count": 10,
+    "source_roasts": [
+      "21_Rwanda Rusizi Gaseke_2026-09-04",
+      "22_Rwanda Rusizi Gaseke_2026-09-04",
+      "23_Rwanda Rusizi Gaseke_2026-09-04",
+      "24_Rwanda Rusizi Gaseke_2026-09-13",
+      "25_Rwanda Rusizi Gaseke_2026-09-13",
+      "26_Rwanda Rusizi Gaseke_2026-09-13"
+    ],
+    "staircase": {
+      "start": {
+        "heater": 100.0,
+        "fan": null
+      },
+      "moves": [
+        {
+          "control": "fan",
+          "value": 10,
+          "median_time": 15.0,
+          "median_bt": 236.3,
+          "n": 6
+        },
+        {
+          "control": "fan",
+          "value": 20,
+          "median_time": 90.0,
+          "median_bt": 176.0,
+          "n": 6
+        },
+        {
+          "control": "heater",
+          "value": 90,
+          "median_time": 268.0,
+          "median_bt": 262.1,
+          "n": 6
+        },
+        {
+          "control": "heater",
+          "value": 80,
+          "median_time": 320.0,
+          "median_bt": 280.85,
+          "n": 6
+        },
+        {
+          "control": "heater",
+          "value": 70,
+          "median_time": 388.0,
+          "median_bt": 302.75,
+          "n": 6
+        },
+        {
+          "control": "heater",
+          "value": 60,
+          "median_time": 450.0,
+          "median_bt": 320.9,
+          "n": 6
+        }
+      ]
+    },
+    "median_curve": [
+      {
+        "time": 0,
+        "bt": 298.1
+      },
+      {
+        "time": 60,
+        "bt": 164.3
+      },
+      {
+        "time": 120,
+        "bt": 196.2
+      },
+      {
+        "time": 180,
+        "bt": 228.4
+      },
+      {
+        "time": 240,
+        "bt": 254.3
+      },
+      {
+        "time": 300,
+        "bt": 277.1
+      },
+      {
+        "time": 360,
+        "bt": 295.4
+      },
+      {
+        "time": 420,
+        "bt": 311.7
+      },
+      {
+        "time": 480,
+        "bt": 324.2
+      },
+      {
+        "time": 540,
+        "bt": 337.3
+      },
+      {
+        "time": 600,
+        "bt": 349.1
+      },
+      {
+        "time": 660,
+        "bt": 360.9
+      },
+      {
+        "time": 720,
+        "bt": 367.4
+      },
+      {
+        "time": 780,
+        "bt": 373.6
+      }
+    ],
+    "charge_bt": 300.2,
+    "tp_bt": 162.5,
+    "tp_time": 58.0,
+    "dry_time": 378.0,
+    "fc_stats": {
+      "count": 10,
+      "fc_time_mean": 633.4,
+      "fc_time_sd": 35.72170208710666,
+      "fc_time_min": 556.0,
+      "fc_time_max": 684.0,
+      "fc_bt_mean": 360.68,
+      "post_fc_rise": 7.886146118945453,
+      "post_fc_rise_measured": true
+    },
+    "fc_time": 633.4,
+    "fc_bt": 360.68,
+    "ror_at_fc": 10.55,
+    "heat_soak_shift": -21.0,
+    "ambient": [
+      {
+        "date": "2026-09-13",
+        "batch": 24,
+        "ambient_temp": 69.0,
+        "fc_time": 684.0
+      },
+      {
+        "date": "2026-09-13",
+        "batch": 25,
+        "ambient_temp": 69.0,
+        "fc_time": 666.0
+      },
+      {
+        "date": "2026-09-13",
+        "batch": 26,
+        "ambient_temp": 69.0,
+        "fc_time": 652.0
+      }
+    ],
+    "dev_history": [
+      {
+        "batch": 17,
+        "date": "2026-07-31",
+        "dev_s": 140.0,
+        "fc_bt": 365.6,
+        "drop_bt": 390.2,
+        "fc_time": 556.0,
+        "ambient_temp": null,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 18,
+        "date": "2026-08-24",
+        "dev_s": 160.0,
+        "fc_bt": 361.4,
+        "drop_bt": 384.8,
+        "fc_time": 636.0,
+        "ambient_temp": null,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 19,
+        "date": "2026-08-24",
+        "dev_s": 150.0,
+        "fc_bt": 365.0,
+        "drop_bt": 390.2,
+        "fc_time": 596.0,
+        "ambient_temp": null,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 20,
+        "date": "2026-08-24",
+        "dev_s": 152.0,
+        "fc_bt": 361.4,
+        "drop_bt": 379.4,
+        "fc_time": 606.0,
+        "ambient_temp": null,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 21,
+        "date": "2026-09-04",
+        "dev_s": 116.0,
+        "fc_bt": 348.8,
+        "drop_bt": 365.0,
+        "fc_time": 648.0,
+        "ambient_temp": null,
+        "balance": -2,
+        "astringency": 2,
+        "sweetness": 0,
+        "body": -1,
+        "preference": "na",
+        "drink_again": "no",
+        "notes": "Brewed as cupping bowl / immersion 6 days after roast. Balance: very sour, grass",
+        "cupped": true
+      },
+      {
+        "batch": 22,
+        "date": "2026-09-04",
+        "dev_s": 70.0,
+        "fc_bt": 360.2,
+        "drop_bt": 368.6,
+        "fc_time": 636.0,
+        "ambient_temp": null,
+        "balance": -2,
+        "astringency": 3,
+        "sweetness": 0,
+        "body": -1,
+        "preference": "worse",
+        "drink_again": "no",
+        "notes": "Brewed as cupping bowl / immersion 6 days after roast. Balance: very sour, grass",
+        "cupped": true
+      },
+      {
+        "batch": 23,
+        "date": "2026-09-04",
+        "dev_s": 134.0,
+        "fc_bt": 361.4,
+        "drop_bt": 375.8,
+        "fc_time": 654.0,
+        "ambient_temp": null,
+        "balance": 0,
+        "astringency": 1,
+        "sweetness": 1,
+        "body": 0,
+        "preference": "better",
+        "drink_again": "no",
+        "notes": "Brewed as cupping bowl / immersion 6 days after roast. Balance: balanced, neithe",
+        "cupped": true
+      },
+      {
+        "batch": 24,
+        "date": "2026-09-13",
+        "dev_s": 152.0,
+        "fc_bt": 357.8,
+        "drop_bt": 375.8,
+        "fc_time": 684.0,
+        "ambient_temp": 69.0,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 25,
+        "date": "2026-09-13",
+        "dev_s": 102.0,
+        "fc_bt": 362.6,
+        "drop_bt": 372.2,
+        "fc_time": 666.0,
+        "ambient_temp": 69.0,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      },
+      {
+        "batch": 26,
+        "date": "2026-09-13",
+        "dev_s": 190.0,
+        "fc_bt": 362.6,
+        "drop_bt": 386.6,
+        "fc_time": 652.0,
+        "ambient_temp": 69.0,
+        "balance": null,
+        "astringency": null,
+        "sweetness": null,
+        "body": null,
+        "preference": null,
+        "drink_again": null,
+        "notes": "",
+        "cupped": false
+      }
+    ],
+    "ear_latency_s": 18.4,
+    "ear_latency_n": 5,
+    "borrowed_from": null
+  },
+  "watch_for": [],
+  "exported": {
+    "at": "2026-09-14T18:47:16",
+    "mode": "paired",
+    "ear_latency_s": 18.4,
+    "manual_drop": true,
+    "files": [
+      "/home/brian/CodeProjects/coffee-roasting/beans/rwanda-rusizi-gaseke/alarms/profile-v1.alrm"
+    ]
+  },
+  "roasts": [],
+  "status": "exported"
+}

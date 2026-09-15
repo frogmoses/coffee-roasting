@@ -15,6 +15,12 @@ Usage:
     python analyze.py full [roast_id]   # Everything: scan + summary + recommendations
     python analyze.py list              # List all analyzed roasts
     python analyze.py bean <name>       # Look up a bean in find-coffee
+    python analyze.py dossier <bean> [--research]  # Research the bean (find-coffee + supplier page)
+    python analyze.py profile <bean> --design      # The designer writes the bean's roast profile
+    python analyze.py profile <bean> --revise      # Next version from the cupping verdicts
+    python analyze.py profile <bean> [--from-roast ID]   # Show / build a version from a logged roast
+    python analyze.py export-alarms <bean> [--manual-drop]  # Artisan alarm set + session sheet
+    python analyze.py sheet <bean>                 # Regenerate the printable session sheet
 """
 
 import argparse
@@ -47,6 +53,24 @@ from roast_display import (
 from coffee_lookup import lookup_bean, extract_bean_profile, ensure_server_running, stop_server
 from sentinel_loader import match_sentinel_to_roast, extract_visual_data, enrich_trajectory_with_temps
 from crack_loader import match_crack_to_roast, extract_audio_data
+from roast_narrative import build_control_timeline
+from roast_schedule import schedule_from_timeline, validate_schedule, compare_execution
+from machine_envelope import envelope_for, compact_envelope
+from alarm_export import schedule_to_alarms, write_alrm, rows_to_conf
+from roast_profile import (
+    slugify, find_bean_title, load_profile, save_profile, new_profile, mark_exported,
+    set_reference, get_reference, attach_roast, match_profile_to_roast, alarm_path,
+    list_versions,
+)
+from roast_display import display_profile, display_alarm_rows, display_execution
+from bean_dossier import (
+    find_dossier_for_title, build_dossier, load_dossier, save_dossier, add_alias, research_bean,
+)
+from profile_designer import design_profile, revise_profile
+from session_sheet import render_sheet, write_sheet, batches_from_profile
+from roast_profile import sheet_path, attach_verdict
+from roast_schedule import schedule_from_envelope
+from llm_client import MODEL as LLM_MODEL
 
 # Paths
 PROJECT_DIR = Path(__file__).parent
@@ -154,10 +178,16 @@ def cmd_scan(args):
             print(f"  Already analyzed: {roast_id}")
             continue
 
-        # Look up bean profile from find-coffee
+        # Bean context: the dossier when the bean has one (roast range,
+        # process, research), else a live find-coffee lookup
         bean_profile = None
         bean_name = data.get("title", "")
-        if bean_name and server_ok:
+        dossier = find_dossier_for_title(bean_name) if bean_name else None
+        if dossier:
+            bean_profile = {k: v for k, v in dossier.items()
+                            if k not in ("page_excerpt", "versions")}
+            print(f"  Bean dossier: {dossier['name']}")
+        elif bean_name and server_ok:
             print(f"  Looking up bean: {bean_name}...")
             coffee_data, lookup_status = lookup_bean(bean_name)
             if coffee_data:
@@ -203,14 +233,20 @@ def cmd_scan(args):
             data.get("roast_date", ""), data.get("batch_nr", 0),
         )
 
+        # The profile version exported before this roast, if the bean has one
+        prof = _profile_for_roast(data)
+
         # Run analysis
         analysis = analyze_roast(
             data, bean_profile, visual_data,
             cupping_notes=preserved_notes or None,
             prior_roasts=prior_roasts,
             audio_data=audio_data,
+            profile=prof,
         )
         analysis["source_file"] = str(alog_path)
+        if prof:
+            _link_profile(prof, analysis)
         # The structured intake lives only in history too — carry it over so
         # a --force re-scan doesn't drop the answers behind the notes text
         if (prior_entry or {}).get("cupping_intake"):
@@ -368,6 +404,17 @@ def cmd_cupping(args):
     else:
         print(f"  !! recommendations not refreshed: {status} (previous ones kept)")
 
+    # The verdict belongs to the profile version the roast ran on; the next
+    # version is designed from it with `profile <bean> --revise`
+    ref = entry.get("profile_ref")
+    if ref:
+        prof = load_profile(ref.get("slug", ""), ref.get("version"))
+        if prof and attach_verdict(prof, roast_id, intake=intake, notes=entry.get("cupping_notes", "")):
+            save_profile(prof)
+            cupped = sum(1 for r in prof.get("roasts", []) if r.get("cupping_intake") or r.get("cupping_notes"))
+            print(f"Verdict recorded on profile v{prof['version']} ({cupped}/{len(prof['roasts'])} of its roasts cupped). "
+                  f"When the session is cupped: profile \"{entry.get('title', '')}\" --revise")
+
 
 def cmd_plan(args):
     """Print a contrast set (same recipe through FC, varied FC->DROP) for
@@ -379,7 +426,18 @@ def cmd_plan(args):
         return
     dev_text = getattr(args, "dev", None)
     dev_times = parse_dev_times(dev_text) if dev_text else DEFAULT_DEV_TIMES
-    plan = build_contrast_plan(history, roast_id, dev_times=dev_times)
+    schedule = None
+    if getattr(args, "profile", False):
+        prof = load_profile(slugify(history[roast_id].get("title", "")))
+        if prof:
+            schedule = prof["schedule"]
+            if not dev_text:
+                dev = int(schedule.get("drop", {}).get("seconds", 150))
+                dev_times = (dev, max(60, dev - 40), dev + 30)
+            print(f"Recipe from profile v{prof['version']}")
+        else:
+            print("No profile for this bean; using the anchor roast's moves.")
+    plan = build_contrast_plan(history, roast_id, dev_times=dev_times, schedule=schedule)
     print(display_contrast_plan(plan))
 
 
@@ -405,6 +463,11 @@ def cmd_full(args):
     if analysis.get("bean_profile"):
         print()
         print(display_bean_profile(analysis["bean_profile"]))
+
+    # Designed vs executed, when the roast ran on a profile
+    if analysis.get("execution"):
+        print()
+        print(display_execution(analysis["execution"]))
 
     # Recommendations
     verbose = getattr(args, "verbose", False)
@@ -449,6 +512,361 @@ def cmd_bean(args):
     profile = extract_bean_profile(coffee_data)
     print(display_bean_profile(profile))
     stop_server()
+
+
+def _profile_for_roast(data):
+    """The profile version exported before this roast (by the bean's title
+    and the roast's date/time), or None."""
+    title = data.get("title", "")
+    if not title:
+        return None
+    return match_profile_to_roast(slugify(title), data.get("roast_date", ""),
+                                  data.get("roast_time", ""))
+
+
+def _link_profile(prof, analysis):
+    """Record the roast (and its execution check) on the profile version."""
+    attach_roast(prof, analysis, analysis.get("execution"))
+    save_profile(prof)
+    execution = analysis.get("execution") or {}
+    print(f"  Profile v{prof['version']}: {execution.get('summary', 'linked')}")
+
+
+def _bean_for(history, name):
+    """(title, slug) for a CLI bean name; an unknown name is a new bean."""
+    title = find_bean_title(history, name) or name.strip()
+    return title, slugify(title)
+
+
+def cmd_profile(args):
+    """Show, build, or mark the bean's roast profile.
+
+    `--from-roast ID` builds a version deterministically from that roast's
+    logged moves (no LLM): the staircase becomes BT-triggered heater cuts
+    and clock-triggered fan moves, the drop is the roast's own development
+    time (or `--dev`). With no flags the latest (or `--version N`) profile is
+    shown. `--set-reference N --roast ID` marks the version that tasted right.
+    """
+    history = load_history()
+    title, slug = _bean_for(history, args.bean)
+
+    if getattr(args, "set_reference", None):
+        roast_id = resolve_roast_id(history, getattr(args, "roast", None))
+        if not roast_id:
+            print("Roast not found (give --roast <id> to say which batch tasted right).")
+            return
+        ref = set_reference(slug, args.set_reference, roast_id)
+        print(f"Reference for {title}: v{ref['version']} ({roast_id}).")
+        return
+
+    from_roast = getattr(args, "from_roast", None)
+    if from_roast:
+        roast_id = resolve_roast_id(history, from_roast)
+        if not roast_id:
+            print("Roast not found.")
+            return
+        entry = history[roast_id]
+        try:
+            data = extract_roast_data(parse_alog(entry.get("source_file", "")))
+        except (ValueError, FileNotFoundError, KeyError, IndexError, TypeError) as e:
+            print(f"Could not re-read the roast's .alog: {e}")
+            return
+        env = envelope_for(history, title)
+        metrics = entry.get("metrics", {})
+        dev = getattr(args, "dev", None) or int(round(metrics.get("dev_phase_time") or 150))
+        sched = schedule_from_timeline(build_control_timeline(data), metrics.get("fc_time", 0),
+                                       env, dev_s=dev)
+        res = validate_schedule(sched, env)
+        if not res["ok"]:
+            print("The roast's schedule does not pass the validator:")
+            for e in res["errors"]:
+                print(f"  !! {e}")
+            return
+        prof = new_profile(slug, title, res["schedule"],
+                           based_on={"kind": "roast", "roast_id": roast_id,
+                                     "borrowed_from": env.get("borrowed_from")},
+                           validator={"errors": [], "warnings": res["warnings"], "clamped": res["clamped"]},
+                           envelope_snapshot=compact_envelope(env))
+        path = save_profile(prof)
+        print(f"Saved {path}")
+        print(display_profile(prof, env))
+        return
+
+    if getattr(args, "design", False):
+        _design_version(history, title, slug, dev=getattr(args, "dev", None))
+        return
+    if getattr(args, "revise", False):
+        _revise_version(history, title, slug, getattr(args, "version", None))
+        return
+
+    version = getattr(args, "version", None)
+    prof = load_profile(slug, version)
+    if not prof:
+        have = list_versions(slug)
+        if have:
+            print(f"No version {version} for {title}; have {have}.")
+        else:
+            print(f"No profile for {title} yet. Design one with:  profile \"{title}\" --design"
+                  f"  (or --from-roast <id> for a logged roast's schedule)")
+        return
+    env = prof.get("envelope_snapshot") or {}
+    print(display_profile(prof, env))
+    ref = get_reference(slug)
+    if ref:
+        print(f"Reference: v{ref['version']} ({ref['roast_id']})")
+
+
+def _dossier_for(title, slug, research=False, alias=None, fetch=True):
+    """The bean's dossier, built (find-coffee + supplier page) when missing."""
+    doc = load_dossier(slug) or find_dossier_for_title(title)
+    if doc and not research:
+        return doc, "stored"
+    if not doc:
+        server_ok, server_status = ensure_server_running()
+        coffee_data = None
+        if server_ok:
+            coffee_data, lookup_status = lookup_bean(title)
+            if not coffee_data:
+                print(f"  find-coffee: {lookup_status}")
+        else:
+            print(f"  find-coffee: {server_status}")
+        doc = build_dossier(title, coffee_data, fetch_page=fetch)
+        stop_server()
+        if alias:
+            add_alias(doc, alias)
+        status = "built" + (" (page fetched)" if doc.get("page_fetched") else " (no page)")
+    else:
+        status = "stored"
+    if research:
+        rstatus = research_bean(doc)
+        status += f", research {rstatus}"
+    save_dossier(doc)
+    return doc, status
+
+
+def cmd_dossier(args):
+    """Research a bean into beans/<slug>/dossier.json and show it."""
+    history = load_history()
+    title, slug = _bean_for(history, args.bean)
+    doc, status = _dossier_for(title, slug, research=getattr(args, "research", False),
+                               alias=getattr(args, "alias", None),
+                               fetch=not getattr(args, "no_fetch", False))
+    print(f"Dossier for {doc['name']} ({status}): {dossier_path_text(slug)}")
+    rr = doc.get("roast_range")
+    print(f"  Supplier roast range: {rr['min']} to {rr['max']}" if rr else "  Supplier roast range: not found")
+    print(f"  Target for this operator: {doc.get('target_level')}")
+    for key in ("process", "region", "variety", "altitude", "arrival"):
+        if doc.get(key):
+            print(f"  {key.capitalize()}: {doc[key]}")
+    if doc.get("research"):
+        print("  Research brief:")
+        for line in doc["research"]["text"].splitlines():
+            print("    " + line)
+    print(display_bean_profile(doc))
+
+
+def dossier_path_text(slug):
+    from bean_dossier import dossier_path
+    return str(dossier_path(slug))
+
+
+def _prior_versions(slug):
+    return [load_profile(slug, v) for v in list_versions(slug)]
+
+
+def _save_design(title, slug, result, env, based_on, status, fallback_note=None):
+    """Store a designer result (or the staircase fallback) as a new version."""
+    prof = new_profile(
+        slug, title, result["schedule"], based_on=based_on,
+        designer={"model": LLM_MODEL, "status": status,
+                  "repair_rounds": result.get("repair_rounds", 0)},
+        predicted=result.get("predicted"),
+        flavor_hypothesis=result.get("flavor_hypothesis", ""),
+        contrast_lever=result.get("contrast_lever"),
+        changes=result.get("changes_from_baseline") or result.get("validator_changes") or [],
+        validator=result.get("validator"),
+        envelope_snapshot=compact_envelope(env),
+        watch_for=result.get("watch_for"),
+    )
+    prof["rationale"] = result.get("rationale", "")
+    prof["roast_level_target"] = result.get("roast_level_target", "")
+    if fallback_note:
+        prof["validator"].setdefault("warnings", []).insert(0, fallback_note)
+    path = save_profile(prof)
+    print(f"Saved {path}")
+    print(display_profile(prof, env))
+    print(f"Next:  export-alarms \"{title}\"" + ("  (add --manual-drop for a first session)" if prof["version"] == 1 else ""))
+    return prof
+
+
+def _design_version(history, title, slug, dev=None):
+    """`profile <bean> --design`: the designer writes the next version."""
+    doc, dstatus = _dossier_for(title, slug)
+    print(f"Dossier: {dstatus}")
+    env = envelope_for(history, title)
+    if env.get("borrowed_from"):
+        print(f"No roasts of {title} here; machine envelope borrowed from {env['borrowed_from']}.")
+    elif not env.get("median_curve"):
+        print("No usable roast history on this machine: the designer has no envelope to work inside.")
+        return
+    prior = _prior_versions(slug)
+    print(f"Designing with {LLM_MODEL}...")
+    result, status = design_profile(doc, env, prior_versions=prior, dev_s=dev)
+    if result:
+        based_on = {"kind": "design", "borrowed_from": env.get("borrowed_from"),
+                    "baseline": "measured staircase"}
+        _save_design(title, slug, result, env, based_on, status)
+        return
+    print(f"  !! designer unavailable: {status}")
+    sched = schedule_from_envelope(env, dev_s=dev or 150)
+    res = validate_schedule(sched, env)
+    if not res["ok"]:
+        print("  The measured staircase does not validate either:")
+        for e in res["errors"]:
+            print(f"    !! {e}")
+        return
+    fallback = {"schedule": res["schedule"], "predicted": res["schedule"].get("predicted"),
+                "validator": {"errors": [], "warnings": res["warnings"], "clamped": res["clamped"]}}
+    _save_design(title, slug, fallback, env, {"kind": "staircase", "borrowed_from": env.get("borrowed_from")},
+                 status, fallback_note=f"designer unavailable ({status}); this is the measured staircase")
+
+
+def _revise_version(history, title, slug, version=None):
+    """`profile <bean> --revise`: the next version from the cupping verdicts."""
+    prof = load_profile(slug, version)
+    if not prof:
+        print(f"No profile for {title} to revise.")
+        return
+    verdicts = [dict(r.get("cupping_intake") or {}, batch=r.get("batch_nr"), dev_s=r.get("dev_s"),
+                     notes=r.get("cupping_notes", ""), execution=r.get("execution"))
+                for r in prof.get("roasts", []) if r.get("cupping_intake") or r.get("cupping_notes")]
+    if not verdicts:
+        print(f"v{prof['version']} has no cupped roasts yet; cup them first (cupping <batch> --intake).")
+        return
+    doc, _ = _dossier_for(title, slug)
+    env = envelope_for(history, title)
+    ref = get_reference(slug)
+    reference = load_profile(slug, ref["version"]) if ref else None
+    print(f"Revising v{prof['version']} from {len(verdicts)} verdict(s) with {LLM_MODEL}...")
+    result, status = revise_profile(prof, doc, env, verdicts, prior_versions=_prior_versions(slug),
+                                    reference=reference)
+    if not result:
+        print(f"  !! no revision: {status}")
+        return
+    changes = result.get("changes_from_baseline") or result.get("validator_changes") or []
+    if not changes:
+        print(f"The designer advises no change: roast v{prof['version']} again.")
+        if result.get("rationale"):
+            print("  " + result["rationale"])
+        return
+    based_on = {"kind": "revision", "version": prof["version"],
+                "reference": ref["version"] if ref else None}
+    _save_design(title, slug, result, env, based_on, status)
+
+
+def _write_sheet_for(title, slug, prof, env, rows, alarm_file):
+    html_text = render_sheet(prof, load_dossier(slug), env, rows,
+                             batches_from_profile(prof, env), alarm_file=alarm_file)
+    path = write_sheet(slug, prof["version"], html_text)
+    print(f"Sheet: {path}")
+    return path
+
+
+def cmd_sheet(args):
+    """Regenerate the printable session sheet for a profile version."""
+    history = load_history()
+    title, slug = _bean_for(history, args.bean)
+    prof = load_profile(slug, getattr(args, "version", None))
+    if not prof:
+        print(f"No profile for {title}.")
+        return
+    env = envelope_for(history, title)
+    if not env.get("median_curve"):
+        env = prof.get("envelope_snapshot") or env
+    exported = prof.get("exported") or {}
+    rows, alarm_file = None, None
+    if exported:
+        res = schedule_to_alarms(prof["schedule"], env, mode=exported.get("mode", "paired"),
+                                 ear_latency_s=exported.get("ear_latency_s") or 0,
+                                 manual_drop=exported.get("manual_drop", False))
+        rows = res["rows"] if not res["errors"] else None
+        files = exported.get("files") or []
+        alarm_file = Path(files[0]).name if files else None
+    _write_sheet_for(title, slug, prof, env, rows, alarm_file)
+
+
+def cmd_export_alarms(args):
+    """Write the bean's profile as an Artisan alarm set (.alrm).
+
+    Mode `paired` (default) gives every heater cut a BT trigger with its
+    expected time as the fallback, `bt`/`time` one or the other. The FCs ->
+    DROP row is offset by the ear's measured alert latency unless
+    `--ear-latency` says otherwise; `--manual-drop` leaves it out for a
+    first session where the operator drops by hand. `--install-local`
+    also writes the table into this machine's Artisan settings for a
+    Simulator run (Artisan must be closed).
+    """
+    history = load_history()
+    title, slug = _bean_for(history, args.bean)
+    version = getattr(args, "version", None)
+    prof = load_profile(slug, version)
+    if not prof:
+        print(f"No profile for {title}. Build one with:  profile \"{title}\" --from-roast <id>")
+        return
+    env = envelope_for(history, title)
+    if not env.get("median_curve"):
+        env = prof.get("envelope_snapshot") or env
+    latency_arg = getattr(args, "ear_latency", None)
+    if latency_arg in (None, "auto"):
+        latency = float(env.get("ear_latency_s") or 0)
+    else:
+        latency = float(latency_arg)
+    mode = getattr(args, "mode", None) or "paired"
+    manual_drop = bool(getattr(args, "manual_drop", False))
+    warmup = not getattr(args, "no_warmup", False)
+    cool = getattr(args, "cool", None)
+    cool = 240 if cool is None else int(cool)
+    res = schedule_to_alarms(prof["schedule"], env, mode=mode, ear_latency_s=latency,
+                             manual_drop=manual_drop, warmup=warmup, cool_after_s=cool)
+    for w in res["warnings"]:
+        print(f"  ! {w}")
+    if res["errors"]:
+        for e in res["errors"]:
+            print(f"  !! {e}")
+        print("Not exported.")
+        return
+    suffix = "" if mode == "paired" else f"-{mode}"
+    path = alarm_path(slug, prof["version"], suffix)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_alrm(path, res["rows"])
+    mark_exported(prof, mode, latency, manual_drop, [path])
+    save_profile(prof)
+    print(display_alarm_rows(res["rows"], f"Alarm set: {title} v{prof['version']} ({mode})"))
+    print(f"Written: {path}")
+    _write_sheet_for(title, slug, prof, env, res["rows"], path.name)
+    print("On the roaster: Config -> Alarms -> Load this file, then ON, super-user, CONTROL once.")
+    if manual_drop:
+        print("DROP is manual for this set: press DROP at FC + dev yourself.")
+    if getattr(args, "install_local", False):
+        _install_local_alarms(res["rows"])
+
+
+def _install_local_alarms(rows):
+    """Write rows into this machine's Artisan.conf [Alarms] for a Simulator run."""
+    import subprocess
+    from artisan_conf import ArtisanConf
+    conf_path = Path.home() / ".config" / "artisan-scope" / "Artisan.conf"
+    if not conf_path.exists():
+        print(f"No local Artisan settings at {conf_path}; run artisan/deploy.sh local first.")
+        return
+    running = subprocess.run(["pgrep", "-f", "share/artisan/artisan"], capture_output=True)
+    if running.returncode == 0:
+        print("Artisan is running here; close it first (it rewrites its settings on exit).")
+        return
+    conf = ArtisanConf.load(conf_path)
+    rows_to_conf(conf, rows)
+    conf.save(conf_path)
+    print(f"Installed {len(rows)} alarm rows into {conf_path}; start Artisan to load them.")
 
 
 def main():
@@ -496,6 +914,7 @@ def main():
     p_plan = subparsers.add_parser("plan", help="Contrast set for the next session (vary FC->DROP)")
     p_plan.add_argument("roast_id", nargs="?", default=None, help="Anchor roast ID or batch number (default: latest)")
     p_plan.add_argument("--dev", help="FC->DROP seconds per batch, comma-separated, in roasting order (default 150,90,210)")
+    p_plan.add_argument("--profile", action="store_true", help="Use the bean's latest designed profile as the recipe")
 
     # full
     p_full = subparsers.add_parser("full", help="Full analysis: scan + show + recommend")
@@ -509,6 +928,47 @@ def main():
     # bean
     p_bean = subparsers.add_parser("bean", help="Look up a bean in find-coffee")
     p_bean.add_argument("name", help="Bean name to search for")
+
+    # profile
+    p_profile = subparsers.add_parser("profile", help="Show or build a bean's roast profile")
+    p_profile.add_argument("bean", help="Bean name (matches history titles; a new name is a new bean)")
+    p_profile.add_argument("--design", action="store_true",
+                           help="The designer writes the next version from the dossier and the machine envelope")
+    p_profile.add_argument("--revise", action="store_true",
+                           help="The designer writes the next version from the cupping verdicts")
+    p_profile.add_argument("--from-roast", help="Build a version from this roast's logged moves (no LLM)")
+    p_profile.add_argument("--dev", type=int, help="FC->DROP seconds for --from-roast / --design baseline")
+    p_profile.add_argument("--version", type=int, help="Show this version instead of the latest")
+    p_profile.add_argument("--set-reference", type=int, metavar="N",
+                           help="Mark version N as the bean's reference (with --roast ID)")
+    p_profile.add_argument("--roast", help="The roast that tasted right, for --set-reference")
+
+    # dossier
+    p_dossier = subparsers.add_parser("dossier", help="Research a bean into beans/<slug>/dossier.json")
+    p_dossier.add_argument("bean", help="Bean name (find-coffee name or Artisan title)")
+    p_dossier.add_argument("--research", action="store_true", help="Also ask the model to research it on the web")
+    p_dossier.add_argument("--alias", help="An Artisan roast title that names this bean")
+    p_dossier.add_argument("--no-fetch", action="store_true", help="Skip the supplier page fetch")
+
+    # sheet
+    p_sheet = subparsers.add_parser("sheet", help="Regenerate the printable session sheet")
+    p_sheet.add_argument("bean", help="Bean name")
+    p_sheet.add_argument("--version", type=int, help="Profile version (default: latest)")
+
+    # export-alarms
+    p_alarms = subparsers.add_parser("export-alarms", help="Artisan alarm set from the bean's profile")
+    p_alarms.add_argument("bean", help="Bean name")
+    p_alarms.add_argument("--version", type=int, help="Profile version (default: latest)")
+    p_alarms.add_argument("--mode", choices=["paired", "bt", "time"], default="paired",
+                          help="BT trigger with time fallback (default), BT only, or time only")
+    p_alarms.add_argument("--manual-drop", action="store_true",
+                          help="No FCs-timed DROP row (operator drops by hand); the BT ceiling stays")
+    p_alarms.add_argument("--ear-latency", default="auto",
+                          help="Seconds subtracted from the DROP offset (default: measured from the ear)")
+    p_alarms.add_argument("--no-warmup", action="store_true", help="Leave out the From-ON warm-up rows")
+    p_alarms.add_argument("--cool", type=int, help="COOL END this many seconds after DROP (default 240; 0 = none)")
+    p_alarms.add_argument("--install-local", action="store_true",
+                          help="Also write the table into this machine's Artisan settings (Simulator)")
 
     args = parser.parse_args()
 
@@ -527,6 +987,10 @@ def main():
         "full": cmd_full,
         "list": cmd_list,
         "bean": cmd_bean,
+        "profile": cmd_profile,
+        "export-alarms": cmd_export_alarms,
+        "dossier": cmd_dossier,
+        "sheet": cmd_sheet,
     }
 
     handler = commands.get(args.command)

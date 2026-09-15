@@ -14,10 +14,13 @@ from roast_metrics import (
     validate_metrics,
 )
 from llm_recommender import generate_llm_recommendations
+from roast_narrative import build_control_timeline
+from roast_schedule import compare_execution
 
 
 def analyze_roast(data, bean_profile=None, visual_data=None,
-                  cupping_notes=None, prior_roasts=None, audio_data=None):
+                  cupping_notes=None, prior_roasts=None, audio_data=None,
+                  profile=None):
     """Full analysis of a roast: metrics, recommendations, next-roast actions.
 
     Args:
@@ -31,6 +34,9 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
             from select_prior_roasts(), giving the LLM the dial-in history.
         audio_data: Optional fc_audio dict from crack_loader.extract_audio_data()
             (the microphone's first-crack verdict).
+        profile: Optional roast profile (roast_profile.py) the roast ran on;
+            its schedule is compared with the logged moves and the result
+            (`execution`) is stored and shown to the LLM.
 
     Returns:
         Dict with metrics, recommendations, next_roast, and metadata.
@@ -52,6 +58,15 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
     # they're the primary cupping workflow and the fresher signal
     effective_notes = cupping_notes or data.get("cupping_notes", "")
 
+    # Designed vs executed, when the roast ran on a profile version
+    timeline = build_control_timeline(data)
+    execution, profile_ref, hypothesis = None, None, ""
+    if profile:
+        execution = compare_execution(profile["schedule"], timeline, metrics,
+                                      profile.get("envelope_snapshot") or {})
+        profile_ref = {"slug": profile.get("slug"), "version": profile.get("version")}
+        hypothesis = profile.get("flavor_hypothesis") or ""
+
     # LLM recommender: reads the metrics + control timeline and BT/RoR curve
     # (from data) + bean, visual, prior-roast, and data-quality context, and
     # reasons from theory + intended-vs-actual flavor. Fails soft — on
@@ -61,11 +76,12 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
         cupping_notes=effective_notes,
         warnings=data_warnings,
         prior_roasts=prior_roasts,
+        execution=execution, profile_ref=profile_ref, flavor_hypothesis=hypothesis,
     )
     recommendations = llm_result["recommendations"] if llm_result else []
     next_roast = llm_result["next_roast"] if llm_result else []
 
-    return {
+    entry = {
         "roast_id": data.get("roast_id", ""),
         "title": data.get("title", ""),
         "roast_date": data.get("roast_date", ""),
@@ -78,7 +94,14 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
         "llm_status": llm_status,
         "bean_profile": bean_profile,
         "warnings": data_warnings,
+        # The heater/fan moves, persisted so planners and the profile
+        # execution check do not have to re-parse the .alog
+        "control_timeline": timeline,
     }
+    if profile:
+        entry["profile_ref"] = profile_ref
+        entry["execution"] = execution
+    return entry
 
 
 def select_prior_roasts(history, roast_id, title, roast_date, batch_nr, limit=3):
@@ -175,11 +198,19 @@ def refresh_recommendations(analysis, history):
         analysis.get("roast_date", ""),
         analysis.get("batch_nr", 0),
     )
+    hypothesis = ""
+    ref = analysis.get("profile_ref")
+    if ref:
+        from roast_profile import load_profile
+        prof = load_profile(ref.get("slug", ""), ref.get("version"))
+        hypothesis = (prof or {}).get("flavor_hypothesis") or ""
     llm_result, status = generate_llm_recommendations(
         analysis.get("metrics", {}), data, analysis.get("bean_profile"),
         cupping_notes=analysis.get("cupping_notes", ""),
         warnings=analysis.get("warnings", []),
         prior_roasts=prior_roasts,
+        execution=analysis.get("execution"), profile_ref=ref,
+        flavor_hypothesis=hypothesis,
     )
     if not llm_result:
         return False, status
