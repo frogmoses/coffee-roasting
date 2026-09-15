@@ -821,7 +821,14 @@ def cmd_export_alarms(args):
         latency = float(env.get("ear_latency_s") or 0)
     else:
         latency = float(latency_arg)
-    mode = getattr(args, "mode", None) or "paired"
+    mode = getattr(args, "mode", None)
+    if not mode:
+        # A borrowed envelope's clock fallbacks come from another bean's
+        # curve; a slower bean would get its cuts early. Temperature only.
+        mode = "bt" if env.get("borrowed_from") else "paired"
+        if mode == "bt":
+            print(f"  Envelope borrowed from {env['borrowed_from']}: exporting BT-triggered rows "
+                  "without clock fallbacks (the first session calibrates this bean's timing)")
     manual_drop = bool(getattr(args, "manual_drop", False))
     warmup = not getattr(args, "no_warmup", False)
     cool = getattr(args, "cool", None)
@@ -978,8 +985,9 @@ def main():
     p_alarms = subparsers.add_parser("export-alarms", help="Artisan alarm set from the bean's profile")
     p_alarms.add_argument("bean", help="Bean name")
     p_alarms.add_argument("--version", type=int, help="Profile version (default: latest)")
-    p_alarms.add_argument("--mode", choices=["paired", "bt", "time"], default="paired",
-                          help="BT trigger with time fallback (default), BT only, or time only")
+    p_alarms.add_argument("--mode", choices=["paired", "bt", "time"], default=None,
+                          help="BT trigger with time fallback (default), BT only (default for a "
+                               "borrowed envelope), or time only")
     p_alarms.add_argument("--manual-drop", action="store_true",
                           help="No FCs-timed DROP row (operator drops by hand); the BT ceiling stays")
     p_alarms.add_argument("--ear-latency", default="auto",

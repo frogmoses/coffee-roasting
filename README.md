@@ -27,7 +27,11 @@ no heater rise, development 60-180 s, projected drop under 398F, and so on)
 and the measured staircase is the fallback if the model is unavailable.
 `export-alarms` writes the Artisan alarm set (`beans/<slug>/alarms/`) and
 the printable session sheet (`beans/<slug>/sheet-vN.html`); `--manual-drop`
-leaves the timed DROP out for a first session where you drop by hand.
+leaves the timed DROP out for a first session where you drop by hand. For a
+bean with a borrowed envelope the cuts are temperature-triggered only (no
+clock fallbacks, since those would be another bean's timing); after its
+first session the bean has its own envelope and the default paired rows
+return.
 
 A version you built from a logged roast instead (`profile <bean>
 --from-roast 26`) is the no-model path: that roast's moves become the plan.

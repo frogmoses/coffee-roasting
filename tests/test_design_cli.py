@@ -145,3 +145,28 @@ def test_cupping_attaches_verdict_and_revise_makes_the_next_version(tmp_path, mo
                               version=1, set_reference=None, roast=None))
     assert "no change: roast v1 again" in capsys.readouterr().out
     assert not (tmp_path / "beans" / "rwanda-test" / "profile-v3.json").exists()
+
+
+def test_export_uses_bt_only_for_a_borrowed_envelope(tmp_path, monkeypatch, capsys):
+    """A new bean borrows the Rwanda's envelope; its clock fallbacks would be
+    another bean's timing, so the export is temperature-triggered only."""
+    logs = _setup(tmp_path, monkeypatch)
+    _write_staircase_alog(logs, "r3", 3, "Rwanda Test", "2026-09-13", "11:13")   # borrowing needs 3 roasts
+    analyze.cmd_scan(_Args(force=False))
+    monkeypatch.setattr(analyze, "design_profile", lambda *a, **k: (_design_answer(), "ok"))
+    analyze.cmd_profile(_Args(bean="Ethiopia New", design=True, revise=False, from_roast=None, dev=None,
+                              version=None, set_reference=None, roast=None))
+    out = capsys.readouterr().out
+    assert "borrowed from Rwanda Test" in out
+    analyze.cmd_export_alarms(_Args(bean="Ethiopia New", version=None, mode=None, manual_drop=True,
+                                    ear_latency="auto", no_warmup=False, cool=None, install_local=False))
+    out = capsys.readouterr().out
+    assert "without clock fallbacks" in out
+    assert "Heater 90%" in out and " or +" not in out.split("Heater 90%")[0].splitlines()[-1]
+    alrm = json.loads((tmp_path / "beans" / "ethiopia-new" / "alarms" / "profile-v1-bt.alrm").read_text())
+    heater_rows = [i for i, a in enumerate(alrm["alarmactions"]) if a == 6 and alrm["alarmtimes"][i] == 0]
+    assert heater_rows and all(alrm["alarmoffsets"][i] == 0 for i in heater_rows)
+    # an explicit mode still wins
+    analyze.cmd_export_alarms(_Args(bean="Ethiopia New", version=None, mode="paired", manual_drop=True,
+                                    ear_latency="auto", no_warmup=False, cool=None, install_local=False))
+    assert " or +" in capsys.readouterr().out
