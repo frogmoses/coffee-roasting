@@ -44,6 +44,11 @@ def test_parse_product_page_extracts_specs_and_excerpt():
     assert fields["roast_notes"].startswith("City to Full City+")
     assert "var nav" not in fields["page_excerpt"] and fields["page_excerpt"].startswith("Cupping Notes")
     assert bd.parse_product_page("") == {"page_excerpt": ""}
+    # a bare "Roast" navigation link is not a roast note, and altitude in prose is found
+    prose = "<p>Roast</p><p>Starter Kits</p><p>It sits at 1500 meters above sea level and farms reach 1800+ meters.</p>"
+    fields = bd.parse_product_page(prose)
+    assert "roast_notes" not in fields
+    assert fields["altitude"] == "1500, 1800+ m (from the page text)"
 
 
 def test_build_dossier_merges_find_coffee_and_page(tmp_path, monkeypatch):
@@ -109,10 +114,16 @@ def test_research_bean_stores_text_and_urls():
     doc = {"name": "Rwanda", "source_url": "https://example.test", "process": "Wet"}
     calls = []
 
-    def fake_call(system, content):
-        calls.append(content)
-        return {"text": "ORIGIN: ...\nSOURCES:\nhttps://example.test", "urls": ["https://example.test"]}, "ok"
+    def fake_call(system, content, max_uses=3):
+        calls.append((content, max_uses))
+        return {"text": "I'll research this for you.\nLet me search.\nORIGIN: ...\nSOURCES:\nhttps://example.test",
+                "urls": ["https://example.test"]}, "ok"
 
+    doc["page_excerpt"] = "Specs\nregion\nRusizi"
     assert bd.research_bean(doc, call=fake_call) == "ok"
-    assert doc["research"]["urls"] == ["https://example.test"] and "Supplier page" in calls[0]
-    assert bd.research_bean(doc, call=lambda s, c: (None, "no API credentials")) == "no API credentials"
+    assert doc["research"]["urls"] == ["https://example.test"]
+    assert doc["research"]["text"].startswith("ORIGIN:")                     # narration stripped
+    content, max_uses = calls[0]
+    assert "Supplier page" in content and "do not re-search" in content and "Rusizi" in content
+    assert max_uses == bd.RESEARCH_MAX_SEARCHES
+    assert bd.research_bean(doc, call=lambda s, c, max_uses=3: (None, "no API credentials")) == "no API credentials"

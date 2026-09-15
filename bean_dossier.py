@@ -37,8 +37,11 @@ PAGE_FIELDS = {
     "altitude": ("Altitude", "Elevation", "Growing Altitude"),
     "arrival": ("Arrival", "Arrival Date"),
     "grade": ("Grade", "Appearance"),
-    "roast_notes": ("Roast Recommendations", "Roast Recommendation", "Roast"),
+    "roast_notes": ("Roast Recommendations", "Roast Recommendation"),
 }
+# Altitude is usually stated in prose ("sits at 1500 meters ... farms reach
+# 1800+"), not in the specs table; these catch it there.
+ALTITUDE_RE = re.compile(r"(\d{3,4}(?:\s*[-\u2013to]+\s*\d{3,4})?\+?)\s*(?:m\b|meters|masl|metres)", re.IGNORECASE)
 PAGE_EXCERPT_CHARS = 6000
 FETCH_TIMEOUT_S = 10
 USER_AGENT = "coffee-roasting dossier (personal home-roasting tool)"
@@ -148,6 +151,14 @@ def parse_product_page(html):
                     fields[key] = value[:300]
             if key in fields:
                 break
+    if not fields.get("altitude"):
+        hits = [m.group(1).strip() for m in ALTITUDE_RE.finditer(text)]
+        if hits:
+            uniq = []
+            for h in hits:
+                if h not in uniq:
+                    uniq.append(h)
+            fields["altitude"] = ", ".join(uniq[:3]) + " m (from the page text)"
     # An excerpt for the designer to read what the parser missed: from the
     # first "Cupping Notes"/"Roast" heading if present, else the top
     start = 0
@@ -276,9 +287,11 @@ def add_alias(dossier, title):
 _RESEARCH_SYSTEM = """\
 You research green coffee for a home roaster with a Hottop KN-8828B-2K+ (a
 250 g drum roaster) who brews only with a Hario Switch and dislikes dark
-roasts. Search the web for the coffee named below (the supplier's page and
-what other roasters report) and write a short plain-text brief with these
-headings, in this order:
+roasts. You are given what the supplier's own page already says; do not
+search for that again. Search the web for what is NOT on it: how other
+roasters found this coffee (or the same washing station in other years)
+behaves in the roaster, and any origin facts the page leaves out. Write a
+short plain-text brief with these headings, in this order:
 
 ORIGIN: process, variety, altitude, harvest/arrival, anything about density
 or screen size.
@@ -289,8 +302,11 @@ names them (City, City+, Full City ...).
 FLAVOR: what to expect in the cup at a light-medium roast, in plain words.
 SOURCES: one URL per line.
 
-Say when something could not be found. Do not invent numbers.
+Say when something could not be found. Do not invent numbers. Output the
+brief only: no preamble, no narration of your searching, nothing after the
+SOURCES list.
 """
+RESEARCH_MAX_SEARCHES = 5
 
 
 def research_bean(dossier, call=None):
@@ -306,14 +322,29 @@ def research_bean(dossier, call=None):
             lines.append(f"{key.capitalize()} (from the supplier page): {dossier[key]}")
     if dossier.get("attributes"):
         lines.append(f"Supplier blurb: {dossier['attributes'][:600]}")
-    result, status = call(_RESEARCH_SYSTEM, "\n".join(lines))
+    rr = dossier.get("roast_range")
+    if rr:
+        lines.append(f"Supplier roast range (already known): {rr['min']} to {rr['max']}")
+    excerpt = (dossier.get("page_excerpt") or "").strip()
+    if excerpt:
+        lines += ["", "WHAT THE SUPPLIER PAGE ALREADY SAYS (do not re-search this):", excerpt[:4000]]
+    result, status = call(_RESEARCH_SYSTEM, "\n".join(lines), max_uses=RESEARCH_MAX_SEARCHES)
     if not result:
         return status
     dossier["research"] = {
-        "text": result["text"], "urls": result.get("urls", []),
+        "text": _strip_preamble(result["text"]), "urls": result.get("urls", []),
         "at": datetime.now().isoformat(timespec="seconds"),
     }
     return "ok"
+
+
+def _strip_preamble(text):
+    """Drop narration before the first heading ("I'll research...")."""
+    lines = text.strip().splitlines()
+    for i, line in enumerate(lines):
+        if re.match(r"^\W*(COFFEE|ORIGIN)\b", line.strip(), re.IGNORECASE):
+            return "\n".join(lines[i:]).strip()
+    return text.strip()
 
 
 # ------------------------------------------------------------ rendering
