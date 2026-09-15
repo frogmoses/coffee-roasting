@@ -204,8 +204,9 @@
 15. CHARGE BT &gt; 321F or +7:50  -&gt; Heater 60%  [if #9]
 16. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
 17. CHARGE BT &gt; 350F           -&gt; (marker, no action)
-18. CHARGE BT &gt; 398F           -&gt; DROP *
-19. DROP +4:00                 -&gt; COOL END</pre>
+18. FCs +2:12                  -&gt; DROP *  [if #17]
+19. CHARGE BT &gt; 398F           -&gt; DROP *
+20. DROP +4:00                 -&gt; COOL END</pre>
 <p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
 </section>
 <section>
@@ -221,10 +222,7 @@
 <div class="section-head"><div class="eyebrow">First crack</div><h2>Mark it, then the timer runs</h2></div>
 <ol class="steps">
 <li>The ear rings its bell about 15-20 s after the first cracks; it is a confirmation, not the earliest signal. <strong>Mark FCs at the first distinct crack</strong> or at 363F BT, whichever comes first.</li>
-<li>Batch 1: start a stopwatch at FCs and press <strong>DROP at 2:30</strong> (that is 150 seconds, read the stopwatch as minutes:seconds).</li>
-<li>Batch 2: start a stopwatch at FCs and press <strong>DROP at 2:10</strong> (that is 130 seconds, read the stopwatch as minutes:seconds).</li>
-<li>Batch 3: start a stopwatch at FCs and press <strong>DROP at 2:50</strong> (that is 170 seconds, read the stopwatch as minutes:seconds).</li>
-<li>Drop early if BT reaches 400F; the 398F alarm will do it for you.</li>
+<li>The DROP alarm fires <strong>2:30</strong> after your FCs mark (minus 18 s when the ear marks it). For the short and long batches load the matching set or drop by hand at the card's time.</li>
 <li>Watch for: Heat-soak/ambient: later batches or a warmer day pull FC 15-35 s earlier; trust the BT-triggered cuts, not the clock.</li>
 <li>Watch for: Drop BT should land near 380F — if FC BT runs high, the 150 s dev could push past Full City; shorten dev rather than let it darken.</li>
 <li>Watch for: Astringency: if it returns, the h80 cut is the lever to move earlier next revision.</li>
@@ -257,7 +255,7 @@ run_roast-analyzer analyze.py cupping &lt;batch&gt; --intake      # once per bat
 run_roast-analyzer analyze.py profile &quot;Rwanda Rusizi Gaseke&quot; --revise    # the next version from the cups
 run_roast-analyzer analyze.py export-alarms &quot;Rwanda Rusizi Gaseke&quot;      # its alarm set and sheet</pre>
 </section>
-<footer><span>Generated 2026-09-14 20:04 from profile v2, based on design </span>
+<footer><span>Generated 2026-09-14 20:35 from profile v2, based on design </span>
 <span>! f20: time trigger after TP; a BT trigger tracks the bean</span>
 <span>! h90: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
 <span>! h80: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
