@@ -89,6 +89,9 @@ case "$MODE" in
         "$PYTHON" "$CONF_TOOL" -f "$tmp" delete General recentFileList >/dev/null
         "$PYTHON" "$CONF_TOOL" -f "$tmp" delete General recentSettingList >/dev/null
         "$PYTHON" "$CONF_TOOL" -f "$tmp" set Batch batchprefix "dev#" >/dev/null
+        # Quantifiers would log the replayed heater/fan recording as phantom
+        # slider moves after every alarm cut; alarms are the only mover now
+        "$PYTHON" "$CONF_TOOL" -f "$tmp" set Quantifiers quantifieractive 0 0 0 0 >/dev/null
         "$PYTHON" "$CONF_TOOL" -f "$tmp" check >/dev/null || { red "artisan_conf.py check failed on the local copy"; rm -f "$tmp"; exit 1; }
         mkdir -p "$(dirname "$LOCAL_ARTISAN_CONF")"
         if [[ -f "$LOCAL_ARTISAN_CONF" ]]; then

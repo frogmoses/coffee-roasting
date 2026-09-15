@@ -510,7 +510,7 @@
     "FC declaration lag ~18 s from the ear detector; start the 150 s dev clock from the machine's FCs mark, not the first audible crack."
   ],
   "exported": {
-    "at": "2026-09-14T18:51:46",
+    "at": "2026-09-14T20:04:32",
     "mode": "paired",
     "ear_latency_s": 18.4,
     "manual_drop": true,

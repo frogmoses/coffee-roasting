@@ -119,3 +119,15 @@ def test_set_reference(tmp_path, monkeypatch, capsys):
     assert "Reference for Rwanda Test: v1" in capsys.readouterr().out
     ref = json.loads((tmp_path / "beans" / "rwanda-test" / "reference.json").read_text())
     assert ref["version"] == 1 and ref["roast_id"] == "2_Rwanda Test_2026-09-13"
+
+
+def test_quantifier_warning_reads_the_settings_file(tmp_path, capsys):
+    conf = tmp_path / "Artisan.conf"
+    conf.write_text("[Quantifiers]\nquantifieractive=1, 0, 0, 1\n", encoding="utf-8")
+    analyze._warn_if_quantifiers_active(conf)
+    assert "event quantifiers are active" in capsys.readouterr().out
+    conf.write_text("[Quantifiers]\nquantifieractive=0, 0, 0, 0\n", encoding="utf-8")
+    analyze._warn_if_quantifiers_active(conf)
+    assert capsys.readouterr().out == ""
+    analyze._warn_if_quantifiers_active(tmp_path / "missing.conf")      # quiet when absent
+    assert capsys.readouterr().out == ""

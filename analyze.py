@@ -835,6 +835,7 @@ def cmd_export_alarms(args):
             print(f"  !! {e}")
         print("Not exported.")
         return
+    _warn_if_quantifiers_active()
     suffix = "" if mode == "paired" else f"-{mode}"
     path = alarm_path(slug, prof["version"], suffix)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -849,6 +850,23 @@ def cmd_export_alarms(args):
         print("DROP is manual for this set: press DROP at FC + dev yourself.")
     if getattr(args, "install_local", False):
         _install_local_alarms(res["rows"])
+
+
+def _warn_if_quantifiers_active(conf_path=None):
+    """Artisan's event quantifiers re-log the Hottop's smoothed heater/fan
+    echo as slider moves after an alarm-driven cut (an alarm move does not
+    set the 45 s quantification block a hand move does), bouncing the slider
+    and filling the log with phantom moves. They must be off wherever the
+    alarm set runs."""
+    from artisan_conf import ArtisanConf
+    path = Path(conf_path) if conf_path else PROJECT_DIR / "artisan" / "Artisan.conf"
+    if not path.exists():
+        return
+    active = ArtisanConf.load(path).get_list("Quantifiers", "quantifieractive") or []
+    if any(str(v).strip() not in ("0", "") for v in active):
+        print(f"  ! event quantifiers are active in {path.name} ({', '.join(active)}); "
+              "set [Quantifiers] quantifieractive to 0, 0, 0, 0 and push, or every alarm cut "
+              "is followed by phantom Q moves")
 
 
 def _install_local_alarms(rows):
@@ -867,6 +885,7 @@ def _install_local_alarms(rows):
     rows_to_conf(conf, rows)
     conf.save(conf_path)
     print(f"Installed {len(rows)} alarm rows into {conf_path}; start Artisan to load them.")
+    _warn_if_quantifiers_active(conf_path)
 
 
 def main():
