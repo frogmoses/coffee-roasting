@@ -7,6 +7,41 @@ exports the profile as an Artisan alarm set so the roast runs itself, reads the
 and revises the profile from how the coffee tasted. Recommendations reason
 from roasting theory and the cup, not from fixed target curves.
 
+## The Loop
+
+1. **Research the bean** (`dossier`): find-coffee record plus the supplier's
+   page; the target roast level is the lower-middle of the supplier's range,
+   never darker than Full City.
+2. **Design the profile** (`profile --design`): the model writes a heater and
+   fan schedule for this Hottop, bounded by a validator and by what the
+   machine has measurably done.
+3. **Export it** (`export-alarms`, `deploy.sh push-alarms`): the schedule
+   becomes an Artisan alarm set plus a printable session sheet.
+4. **Roast** (`run_ear ear.py listen`): you load, warm up by alarm, charge,
+   and taste; the alarms make every move, the ear listens for first crack.
+5. **Check and taste** (`full`, `cupping --intake`): the report shows the
+   designed schedule against what the machine did; the intake records the
+   verdict on that profile version.
+6. **Revise** (`profile --revise`, back to step 3): the next version changes
+   at most three things, so the next cup can be attributed to them.
+
+Your tastes enter at step 2 in two ways. The standing preferences (Hario
+Switch only, no dark roast, development capped at 180 s, a 300F charge of
+about 200 g) are written into the designer's prompt in
+`hottop_reference.py`. Everything else it knows about what you like comes
+from the intake verdicts of earlier roasts, so the loop only gets as good as
+the cupping you feed it.
+
+**Where this stands (2026-09-17).** Every stage exists and is tested, but no
+roast has run on an exported alarm set yet; the Rwanda v2 set has been
+exercised only in the Artisan Simulator. The first live session keeps FCs
+and DROP by hand (`--manual-drop`) with the ear as an alert. Fully hands-off
+roasting through DROP depends on the ear marking first crack in Artisan
+(`--push-artisan`), which is built but has not been watched on the roaster;
+on the last live day the ear declared FC on two of three batches. Until it
+declares reliably, a timed DROP row is a risk: if the ear misses, the only
+automatic drop left is the 398F ceiling, which is darker than you want.
+
 ## A New Bean
 
 ```bash
@@ -69,7 +104,10 @@ It asks how you brewed it, sour-or-roasty, astringency, sweetness, body, and
 whether it was better or worse than the last batch. The recommendations are
 regenerated on the spot from how the coffee tasted, and the verdict is
 recorded on the profile version the roast ran on. Free text works too with
-`--notes "..."`. When the session's batches are cupped:
+`--notes "..."`. Cup every batch of the session before revising: the
+designer sees the verdicts as a set (the contrast bracket only means
+something with all three answered), and a version revised from one cup
+drifts on noise. When the session's batches are cupped:
 
 ```bash
 run_roast-analyzer analyze.py profile "Rwanda Rusizi Gaseke" --revise
@@ -126,12 +164,22 @@ latency); without it the ear marks nothing. On the next `full`, the summary
 shows **FC by audio** next to your mark and, for a roast that ran on a
 profile, a **Designed vs Executed** box.
 
-Leave the ear running all day. Restart Artisan and the Hottop between batches
-as you normally do: the ear ignores the OFF from a restart, and after each
-finished roast it starts a fresh session on its own. Press OFF in Artisan at
-the end of a roast, then save the log; the ear waits up to five minutes for
-that save and prints **Linked to .alog** when the recording is tied to it.
-Ctrl-C stops the ear for the day. If the ear was started late, after CHARGE,
+**Manual first, automatic when earned.** A bean's first session runs on a
+`--manual-drop` export: the alarms make every move through first crack, you
+mark FCs and press DROP at the sheet's stopwatch time. Once the ear has
+declared first crack on two consecutive sessions, start it with
+`--push-artisan` and re-export without `--manual-drop` so Artisan drops on
+its own. Either way, watch for a miss: if BT passes about 365F with no
+FCs mark, mark it yourself, because without a mark the timed DROP row never
+fires and the next automatic drop is the 398F ceiling.
+
+Leave the ear running all day. Between batches the routine is DROP, COOL
+END, OFF, save, ON, and the ear rolls into a fresh session after each
+finished roast. If you do restart Artisan and the Hottop between batches
+instead, the ear tolerates that too: it ignores the OFF from a restart.
+Press OFF in Artisan at the end of a roast, then save the log; the ear waits
+up to five minutes for that save and prints **Linked to .alog** when the
+recording is tied to it. Ctrl-C stops the ear for the day. If the ear was started late, after CHARGE,
 it still counts cracks and the analyzer rebuilds the roast clock from the log
 afterwards. To check the mic and gain first:
 
@@ -273,13 +321,14 @@ environment variables:
   with button actions `send({"event": "ON"})`, `CHARGE`, `DRY`, `FCs`, and
   `OFF`. OFF is what lets the ear link its recording to the saved `.alog`.
   The DROP button keeps its Hottop commands (flap, stirrer, heat, fan); the
-  ear does not need a DROP event. The Hottop often stops obeying Artisan
-  between batches, so the usual practice is to shut both down and restart
-  to keep the drum hot; the ear tolerates that. The cause is in Artisan's
-  driver (OFF keeps the Hottop connection while control is still on, and
-  control cannot be released above 350F); the empty-drum tests that settle
-  the right sequence, with the `run_ear hottop_probe.py` serial probe, are
-  in [docs/hottop-handshake-tests.md](docs/hottop-handshake-tests.md).
+  ear does not need a DROP event. The Hottop used to stop obeying Artisan
+  between batches, which led to restarting both to keep the drum hot. The
+  cause was the CONTROL button: releasing control turns the Hottop off,
+  and control cannot be released above 350F, so a second press mid-day
+  left a dead connection. The empty-drum tests that settled the routine
+  (press CONTROL once, then DROP, COOL END, OFF, save, ON between batches),
+  with the `run_ear hottop_probe.py` serial probe, are in
+  [docs/hottop-handshake-tests.md](docs/hottop-handshake-tests.md).
 
 ## Reference
 
