@@ -81,3 +81,19 @@ def test_render_sheet_timed_drop_and_no_alarms():
     env = dict(_envelope(), borrowed_from="Bolivia Caranavi")
     html = ss.render_sheet(prof, None, env, None)
     assert "Envelope borrowed from <b>Bolivia Caranavi</b>" in html
+
+
+def test_fan_after_fc_bracket_cards_keep_dev_and_name_the_slider_move():
+    prof = _profile(exported={"at": "2026-09-14T12:00:00", "mode": "bt", "ear_latency_s": 0,
+                              "manual_drop": True, "files": []})
+    base = ss._fan_into_fc(prof["schedule"])                         # the fixture's last pre-FC fan
+    prof["contrast_lever"] = {"key": "fan_after_fc", "values": [base, 40, 30], "why": "airflow from FC"}
+    cards = ss.batches_from_profile(prof, _envelope())
+    assert [c["label"] for c in cards] == ["design", "fan 40%", "fan 30%"]
+    assert {c["dev_s"] for c in cards} == {140}                      # development held fixed
+    assert cards[0]["manual_move"] is None and cards[0]["fan_after_fc"] == base
+    assert cards[1]["manual_move"] == "at your FCs mark, move the fan slider to 40%"
+    html = ss.render_sheet(prof, None, _envelope(), None)
+    assert "Batch 2 &middot; fan 40%" in html and "At FCs: fan &rarr; 40%" in html
+    assert "move the fan slider to 30%</strong>, then start a stopwatch" in html
+    assert "airflow from FC" in html

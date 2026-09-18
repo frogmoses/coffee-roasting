@@ -178,15 +178,55 @@ def _e(text):
     return html.escape("" if text is None else str(text))
 
 
+def _fan_into_fc(sched):
+    """The fan level the schedule carries into first crack: a post-FC fan
+    move if the design has one, else the last pre-FC fan move, else the
+    charge fan."""
+    for mv in sched.get("post_fc", []):
+        if mv.get("action") == "fan":
+            return int(mv.get("value", 0))
+    fans = [int(mv.get("value", 0)) for mv in sched.get("moves", []) if mv.get("action") == "fan"]
+    return fans[-1] if fans else int((sched.get("charge") or {}).get("fan", 0))
+
+
+def _fan_batches(profile, envelope, values):
+    """A fan-after-FC bracket: every batch at the design's development, the
+    fan moved by hand at the FCs mark on all but the design batch. Only a
+    manual session can run it (one alarm set, one fan value), so the card
+    says what the operator does at the mark."""
+    sched = profile.get("schedule", {})
+    dev = int(sched.get("drop", {}).get("seconds", 150))
+    base = _fan_into_fc(sched)
+    values = sorted(set(int(round(v)) for v in values) | {base})
+    ordered = [base] + [v for v in values if v > base][::-1] + [v for v in values if v < base]
+    drop_bt = project_drop_bt(sched, envelope)
+    cards = []
+    for i, v in enumerate(ordered, 1):
+        if v == base:
+            label, note, move = "design", f"The designed roast: fan stays at {base}% through first crack. Goes first, cold drum.", None
+        else:
+            label = f"fan {v}%"
+            move = f"at your FCs mark, move the fan slider to {v}%"
+            note = (f"Fan {v}% from first crack: more airflow through development, a slightly slower rise, "
+                    "chaff and smoke cleared. Expect the finish cleaner or flatter; the cup decides.")
+        cards.append({"order": i, "dev_s": dev, "label": label, "note": note, "fan_after_fc": v,
+                      "manual_move": move, "drop_bt": round(drop_bt),
+                      "margin": round(SAFETY_EJECT_BT - drop_bt)})
+    return cards
+
+
 def batches_from_profile(profile, envelope):
     """The contrast set as cards: the design's own value first, then the
     short and long ends (same order roast_plan uses, so batch 1 is roasted
-    under the same cold-drum state as every earlier first-of-day batch)."""
+    under the same cold-drum state as every earlier first-of-day batch).
+    A `fan_after_fc` lever gives fan cards instead (see `_fan_batches`)."""
     lever = profile.get("contrast_lever") or {}
     sched = profile.get("schedule", {})
     dev = int(sched.get("drop", {}).get("seconds", 150))
     key = lever.get("key") or "dev_seconds"
     values = [v for v in (lever.get("values") or []) if v is not None]
+    if key == "fan_after_fc" and values:
+        return _fan_batches(profile, envelope, values)
     if key != "dev_seconds" or not values:
         values = [dev]
     values = sorted(set(int(round(v)) for v in values))
@@ -334,7 +374,8 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         warn = ' warn' if c["margin"] < 10 else ""
         a(f'<div class="card{warn}"><div class="eyebrow">Batch {c["order"]} &middot; {_e(c["label"])}</div>'
           f'<div class="big">FC + {_e(fmt_mmss(c["dev_s"]))} <small>{c["dev_s"]} s &middot; drop ~{c["drop_bt"]}F</small></div>'
-          f'<div class="note">{_e(c["note"])}' + (" If BT reaches 400F before the timer, drop." if c["margin"] < 15 else "") + "</div></div>")
+          + (f'<div class="big" style="font-size:1.1rem">At FCs: fan &rarr; {c["fan_after_fc"]}%</div>' if c.get("manual_move") else "")
+          + f'<div class="note">{_e(c["note"])}' + (" If BT reaches 400F before the timer, drop." if c["margin"] < 15 else "") + "</div></div>")
     a("</div>")
     lever = profile.get("contrast_lever") or {}
     if lever.get("why"):
@@ -349,7 +390,8 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         a("<li><strong>You mark FCs</strong>, at the first distinct crack or at 363F BT, whichever comes first. The ear's bell is confirmation, "
           "about 18 s behind the first cracks; if it rings before you have marked, mark now. The 372F pop-up means you have missed it: mark at once.</li>")
         for c in batches:
-            a(f"<li>Batch {c['order']}: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at {_e(fmt_mmss(c['dev_s']))}</strong> "
+            move = f" <strong>{_e(c['manual_move'])}</strong>, then" if c.get("manual_move") else ""
+            a(f"<li>Batch {c['order']}:{move} start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at {_e(fmt_mmss(c['dev_s']))}</strong> "
               f"(that is {c['dev_s']} seconds, read the stopwatch as minutes:seconds).</li>")
         a("<li>Drop early if BT reaches 400F; the 398F alarm will do it for you.</li>")
     else:

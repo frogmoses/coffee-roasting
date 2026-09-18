@@ -142,13 +142,13 @@
   },
   "flavor_hypothesis": "A balanced cup (needle off sour) with the raw-sugar/turbinado sweetness lifted above batch 23's faint 1 and a fuller body, low astringency, milk-chocolate finish with bright fruit flashes retained.",
   "contrast_lever": {
-    "key": "dev_seconds",
+    "key": "fan_after_fc",
     "values": [
-      130,
-      150,
-      170
+      20,
+      40,
+      30
     ],
-    "why": "Cup history shows balance and sweetness climb with development (batch 22@70s and 21@116s sour; 23@134s balanced but still thin). Bracketing dev finds where sweetness/body peak before it turns roasty."
+    "why": "Changed by hand on 2026-09-18 after the #24-26 cups: development is bounded on both sides (70-116 s sour and thin, 190 s roasty and harsh, 134-152 s balanced with a hint of sweetness), so a 130/150/170 s bracket would repeat what is known. The lever the recommender has asked for since #21 and no profile has tried is airflow from first crack; in this manual session it is a slider move at the mark. Development stays at 150 s on every batch."
   },
   "changes_from_baseline": [
     {
@@ -521,5 +521,17 @@
   "roasts": [],
   "status": "exported",
   "rationale": "The staircase is proven and I keep it untouched \u2014 it delivers balanced, low-astringency roasts at a controlled rate into FC. The only cup-argued lever is development: the sour/thin batches were all short (70-116 s), the one balanced batch was 134 s, and the roaster still didn't 'drink again' because sweetness and body were low. Nudging development to 150 s (well under the 180 s cap, drop ~380F under the 398F ceiling) should lift sweetness and body without darkening past Full City. The session brackets dev at 130/150/170 so the roaster can pin the sweet spot in one contrast.",
-  "roast_level_target": "City+"
+  "roast_level_target": "City+",
+  "contrast_lever_designed": {
+    "key": "dev_seconds",
+    "values": [
+      130,
+      150,
+      170
+    ],
+    "why": "Cup history shows balance and sweetness climb with development (batch 22@70s and 21@116s sour; 23@134s balanced but still thin). Bracketing dev finds where sweetness/body peak before it turns roasty."
+  },
+  "notes": [
+    "2026-09-18: contrast lever set by hand to fan_after_fc [20, 40, 30]; the designer's dev bracket is kept as contrast_lever_designed"
+  ]
 }

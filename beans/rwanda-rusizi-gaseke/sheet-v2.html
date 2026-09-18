@@ -217,19 +217,19 @@
 <section>
 <div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>Design first, then the ends of the bracket</h2></div>
 <div class="cards">
-<div class="card"><div class="eyebrow">Batch 1 &middot; design</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="note">The designed development. Goes first, cold drum.</div></div>
-<div class="card"><div class="eyebrow">Batch 2 &middot; short</div><div class="big">FC + 2:10 <small>130 s &middot; drop ~378F</small></div><div class="note">Expect brighter, possibly sour or grassy: what under-developed tastes like on this bean.</div></div>
-<div class="card"><div class="eyebrow">Batch 3 &middot; long</div><div class="big">FC + 2:50 <small>170 s &middot; drop ~383F</small></div><div class="note">Expect roastier, heavier, less bright.</div></div>
+<div class="card"><div class="eyebrow">Batch 1 &middot; design</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="note">The designed roast: fan stays at 20% through first crack. Goes first, cold drum.</div></div>
+<div class="card"><div class="eyebrow">Batch 2 &middot; fan 40%</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="big" style="font-size:1.1rem">At FCs: fan &rarr; 40%</div><div class="note">Fan 40% from first crack: more airflow through development, a slightly slower rise, chaff and smoke cleared. Expect the finish cleaner or flatter; the cup decides.</div></div>
+<div class="card"><div class="eyebrow">Batch 3 &middot; fan 30%</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="big" style="font-size:1.1rem">At FCs: fan &rarr; 30%</div><div class="note">Fan 30% from first crack: more airflow through development, a slightly slower rise, chaff and smoke cleared. Expect the finish cleaner or flatter; the cup decides.</div></div>
 </div>
-<p class="a" style="color: var(--ink-2)">Cup history shows balance and sweetness climb with development (batch 22@70s and 21@116s sour; 23@134s balanced but still thin). Bracketing dev finds where sweetness/body peak before it turns roasty.</p>
+<p class="a" style="color: var(--ink-2)">Changed by hand on 2026-09-18 after the #24-26 cups: development is bounded on both sides (70-116 s sour and thin, 190 s roasty and harsh, 134-152 s balanced with a hint of sweetness), so a 130/150/170 s bracket would repeat what is known. The lever the recommender has asked for since #21 and no profile has tried is airflow from first crack; in this manual session it is a slider move at the mark. Development stays at 150 s on every batch.</p>
 </section>
 <section>
 <div class="section-head"><div class="eyebrow">First crack</div><h2>Mark it, then the timer runs</h2></div>
 <ol class="steps">
 <li><strong>You mark FCs</strong>, at the first distinct crack or at 363F BT, whichever comes first. The ear's bell is confirmation, about 18 s behind the first cracks; if it rings before you have marked, mark now. The 372F pop-up means you have missed it: mark at once.</li>
 <li>Batch 1: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:30</strong> (that is 150 seconds, read the stopwatch as minutes:seconds).</li>
-<li>Batch 2: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:10</strong> (that is 130 seconds, read the stopwatch as minutes:seconds).</li>
-<li>Batch 3: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:50</strong> (that is 170 seconds, read the stopwatch as minutes:seconds).</li>
+<li>Batch 2: <strong>at your FCs mark, move the fan slider to 40%</strong>, then start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:30</strong> (that is 150 seconds, read the stopwatch as minutes:seconds).</li>
+<li>Batch 3: <strong>at your FCs mark, move the fan slider to 30%</strong>, then start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:30</strong> (that is 150 seconds, read the stopwatch as minutes:seconds).</li>
 <li>Drop early if BT reaches 400F; the 398F alarm will do it for you.</li>
 <li>Watch for: Heat-soak/ambient: later batches or a warmer day pull FC 15-35 s earlier; trust the BT-triggered cuts, not the clock.</li>
 <li>Watch for: Drop BT should land near 380F — if FC BT runs high, the 150 s dev could push past Full City; shorten dev rather than let it darken.</li>
@@ -262,7 +262,7 @@ run_roast-analyzer analyze.py cupping &lt;batch&gt; --intake      # once per bat
 run_roast-analyzer analyze.py profile &quot;Rwanda Rusizi Gaseke&quot; --revise    # the next version from the cups
 run_roast-analyzer analyze.py export-alarms &quot;Rwanda Rusizi Gaseke&quot;      # its alarm set and sheet</pre>
 </section>
-<footer><span>Generated 2026-09-18 06:55 from profile v2, based on design </span>
+<footer><span>Generated 2026-09-18 12:03 from profile v2, based on design </span>
 <span>! f20: time trigger after TP; a BT trigger tracks the bean</span>
 <span>! h90: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
 <span>! h80: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
