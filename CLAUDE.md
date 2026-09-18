@@ -445,14 +445,19 @@ cupped -> reference / superseded.
 condition (so "BT > 262 or CHARGE+4:28" is one row); guards are stored
 0-based; From-ON rows evaluate while merely ON. Rows: a "roast started"
 marker (From CHARGE, BT > 0) that But-Not guards every From-ON warm-up row
-(motor on = Event Button "1", heater 100 at ON+3 s unless the preheat row
+(control on = Event Button "3", motor on / door close / stirrer off =
+Event Button "1,5,8", heater 100 and fan 0 at ON+5 s unless the preheat row
 fired, BT > 370 -> heater 0 + fan 100, BT < 300 If-Alarm that -> pop-up +
 fan 0 + heater 100); a "past the turning point" marker (BT < lowest trigger
 - 10) that If-Alarm guards the BT rows (BT falls from 300F first); clock
 rows for the fan moves; the 356F pop-up; an "FC possible" marker (BT > 350)
 guarding the post-FC rows and the DROP row (From FC START + dev - ear
-latency; omitted with `manual_drop`); BT > 398 -> DROP unconditional; COOL
-END at DROP + 240 s. `.alrm` = 11 plural keys (`write_alrm`/`read_alrm`);
+latency; omitted with `manual_drop`); a 372F "no FCs mark yet?" pop-up;
+BT > 398 -> DROP unconditional; COOL END at DROP + 240 s. The From-ON
+rows are: button 3 "Control On" at ON+1 s, buttons "1,5,8" (motor on,
+door close, stirrer off) at ON+3 s, heater 100 and fan 0 at ON+5 s (both
+But-Not the preheat row), then the preheat/cool/charge rows. The descent
+marker is `BT < lowest trigger - 10 or CHARGE + 45 s`. `.alrm` = 11 plural keys (`write_alrm`/`read_alrm`);
 `rows_to_conf` writes the singular `[Alarms]` keys (>= 2 rows).
 `describe_rows` prints them 1-based like the dialog.
 
@@ -472,13 +477,24 @@ replayed recording). No Hottop command was sent (`quantifieraction` is off)
 but the log and the execution check were polluted. `deploy.sh local` sets
 it off in the dev copy too and `export-alarms` warns when it is active.
 
-**Roast day** (decided 2026-09-14): load the `.alrm`, ON, super-user,
-CONTROL once and never again (releasing control turns the Hottop off),
-warm-up by alarms, START + CHARGE by hand, first session with
-`--manual-drop` (FCs and DROP by hand), between batches DROP / COOL END /
-OFF / save / ON (no Keep ON: autosave is off and a manual ON fires the
-From-ON rows). Build order A-G and gates are in the plan file; step B is a
-dev-machine Artisan Simulator run with `export-alarms --install-local`.
+**Roast day** (decided 2026-09-14, revised 2026-09-18): load the `.alrm`,
+ON; the first From-ON row presses the "Control On" custom button (slot 3,
+Hottop command `control(1)` = super-user + control + drum), because the
+driver discards every command until control is active and the From-ON
+rows fire seconds after ON; CONTROL is never pressed by hand (releasing
+control turns the Hottop off). Warm-up by alarms (motor on, door closed,
+stirrer off, heater 100 / fan 0), START + CHARGE by hand, first session
+with `--manual-drop` (FCs and DROP by hand, latency 0), between batches
+DROP / COOL END (always: it closes the door and stops the drum) / OFF /
+save / ON (no Keep ON: autosave is off and a manual ON fires the From-ON
+rows). DROP is the panic button, never OFF (recording off = no alarm
+evaluates, heater stays). The descent marker has a clock twin at
+CHARGE+45 s so a late CHARGE mark still arms the staircase; a 372F pop-up
+nags when FCs is unmarked; a contrast session exports `bt` mode by default
+so the bracket's batches share the same cuts. The review that produced
+these is `docs/review-2026-09-18.md`. Build order A-G and gates are in the
+plan file; step B is a dev-machine Artisan Simulator run with
+`export-alarms --install-local`.
 
 ## Ear: Microphone First-Crack Detector (`ear/`, `crack_loader.py`)
 
@@ -580,8 +596,10 @@ accepted as a crack if 1 <= dur <= 30 ms and spectral flatness at its peak
 rejected long/tonal bursts blank onsets for 300 ms; onsets within 40 ms merge.
 Reported onset = center of the first hot frame. `detect_cracks()` is the
 offline wrapper over the same `ClickDetector.feed()` path (block-size parity
-is tested). `FirstCrackTracker(n=7, window_s=20, min_elapsed_s=480)` declares
-FC once when n accepted cracks fall in the rolling window (tuned 2026-09-04:
+is tested). `FirstCrackTracker(n=7, window_s=20, min_elapsed_s=540)` declares
+FC once when n accepted cracks fall in the rolling window (the gate sits
+just under the earliest measured FC, 556 s; a late-started ear on a
+provisional clock alerts but never pushes) (tuned 2026-09-04:
 the drum makes 3-4 clicks/min at any heater setting, FC runs 20-30/min;
 4-in-20s fired on that trickle 1-2 min early, 7-in-20s matched the curve
 crash within 2-6 s on all three roasts); onset = first

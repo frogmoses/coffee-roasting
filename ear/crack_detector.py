@@ -45,10 +45,14 @@ DETECTOR_DEFAULTS = {
 # 20-30/min. Four-in-20s fired on the trickle 1-2 minutes early; seven-in-20s
 # landed within 2-6 s of the curve's crash on all three (and 49 s after an
 # early by-ear mark on the first, which the curve also called late).
+# min_elapsed_s: the earliest first crack over 26 roasts on this machine was
+# 9:16 (556 s, July, warm weather); a declaration pushed into Artisan cannot
+# be taken back and times the DROP, so the gate sits just under that
+# (2026-09-18, was 480 s). `--arm-at N` still lowers it for bench runs.
 FC_RULE_DEFAULTS = {
     "n": 7,                  # accepted cracks ...
     "window_s": 20.0,        # ... inside this rolling window declares FC
-    "min_elapsed_s": 480.0,  # never declare before this many seconds after CHARGE
+    "min_elapsed_s": 540.0,  # never declare before this many seconds after CHARGE
 }
 
 _EPS = 1e-12

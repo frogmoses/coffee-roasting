@@ -134,15 +134,24 @@ alarm table row by row, the batches, first-crack marking, the tasting
 recipe, and the intake. `plan --profile` prints the same bracket in the
 terminal.
 
-**Load the alarm set and press CONTROL once.** In Artisan: name the roast,
-Config -> Alarms -> Load the bean's `.alrm`, ON, right-click the timer LCD
-until it says super on, CONTROL once. Never press CONTROL again that day:
-releasing control turns the Hottop off (the old restart dance was that
-button). The From-ON rows run the warm-up (drum on, heater 100% to 370F,
-heater off and fan up to 300F, a pop-up says charge); you press START and
-CHARGE; the alarms make every move through first crack; a 398F row drops
-the beans if anything goes wrong. Between batches: DROP, COOL END, OFF,
-save, ON. The warm-up repeats on its own.
+**Before Artisan opens.** The roaster's settings must match the repo copy
+(`DEPLOY_SSH_HOST=roaster artisan/deploy.sh diff` prints nothing; otherwise
+`push` with Artisan closed). Check the microphone with `run_ear ear.py
+level`: the empty running drum should peak near -30 dBFS with no clipping.
+
+**Load the alarm set and press ON.** In Artisan: name the roast, Config ->
+Alarms -> Load the bean's `.alrm`, ON. The first alarm row takes Hottop
+control (super-user included) and starts the drum, so never press CONTROL
+yourself: releasing control turns the Hottop off (the old restart dance was
+that button). The From-ON rows run the warm-up (door closed, stirrer off,
+heater 100% to 370F, heater off and fan up to 300F, a pop-up says charge);
+you press START and CHARGE; the alarms make every move through first
+crack; a 372F pop-up nags if FCs is still unmarked; a 398F row drops the
+beans if anything goes wrong. DROP is the panic button, never OFF: with
+recording off no alarm evaluates and the heater stays where it was. Between
+batches, in order: DROP, COOL END (always, it closes the door and stops the
+drum; after OFF nothing will), OFF, save, ON. The warm-up repeats on its
+own.
 
 **Let the roaster listen for first crack.** On the roaster laptop, once, before
 the first ON of the day:
@@ -166,12 +175,20 @@ profile, a **Designed vs Executed** box.
 
 **Manual first, automatic when earned.** A bean's first session runs on a
 `--manual-drop` export: the alarms make every move through first crack, you
-mark FCs and press DROP at the sheet's stopwatch time. Once the ear has
-declared first crack on two consecutive sessions, start it with
-`--push-artisan` and re-export without `--manual-drop` so Artisan drops on
-its own. Either way, watch for a miss: if BT passes about 365F with no
-FCs mark, mark it yourself, because without a mark the timed DROP row never
-fires and the next automatic drop is the 398F ceiling.
+mark FCs and press DROP at the sheet's stopwatch time; the ear's bell is
+confirmation. Once the ear has declared first crack on two consecutive
+sessions, start it with `--push-artisan` and re-export without
+`--manual-drop` so Artisan drops on its own. Then keep your hands off the
+FCs button: the DROP row is timed from the ear's mark minus its latency, and
+a hand mark would shorten development by that much. One marker per session,
+never both. Either way, the 372F pop-up means first crack has been missed:
+mark it yourself, because without a mark the timed DROP row never fires and
+the next automatic drop is the 398F ceiling.
+
+A contrast session exports BT-only rows on its own (`--mode bt`), so all
+three batches get the same cuts at the same bean temperature whatever the
+drum's heat-soak does to the clock; the paired rows with clock fallbacks
+are for single-batch days.
 
 Leave the ear running all day. Between batches the routine is DROP, COOL
 END, OFF, save, ON, and the ear rolls into a fresh session after each

@@ -822,14 +822,31 @@ def cmd_export_alarms(args):
     else:
         latency = float(latency_arg)
     mode = getattr(args, "mode", None)
+    lever = prof.get("contrast_lever") or {}
+    bracket = len({v for v in (lever.get("values") or []) if v is not None}) > 1
     if not mode:
         # A borrowed envelope's clock fallbacks come from another bean's
         # curve; a slower bean would get its cuts early. Temperature only.
-        mode = "bt" if env.get("borrowed_from") else "paired"
-        if mode == "bt":
+        # A contrast session also gets BT-only rows: with paired rows a cold
+        # first batch runs on the clock twins and a heat-soaked third on the
+        # BT twins, so the pre-FC schedule would differ with roast order and
+        # the bracket's one lever would no longer be the only difference.
+        if env.get("borrowed_from"):
+            mode = "bt"
             print(f"  Envelope borrowed from {env['borrowed_from']}: exporting BT-triggered rows "
                   "without clock fallbacks (the first session calibrates this bean's timing)")
+        elif bracket:
+            mode = "bt"
+            print(f"  Contrast set on {lever.get('key', 'dev_seconds')} {lever.get('values')}: exporting "
+                  "BT-triggered rows only, so every batch gets the same cuts at the same BT "
+                  "(--mode paired to override)")
+        else:
+            mode = "paired"
     manual_drop = bool(getattr(args, "manual_drop", False))
+    if manual_drop and latency:
+        # The operator's own mark times the drop; the ear's latency only
+        # applies to a DROP row run from the ear's mark.
+        latency = 0.0
     warmup = not getattr(args, "no_warmup", False)
     cool = getattr(args, "cool", None)
     cool = 240 if cool is None else int(cool)
@@ -852,9 +869,12 @@ def cmd_export_alarms(args):
     print(display_alarm_rows(res["rows"], f"Alarm set: {title} v{prof['version']} ({mode})"))
     print(f"Written: {path}")
     _write_sheet_for(title, slug, prof, env, res["rows"], path.name)
-    print("On the roaster: Config -> Alarms -> Load this file, then ON, super-user, CONTROL once.")
+    print("On the roaster: Config -> Alarms -> Load this file, then ON. The first row takes Hottop control; "
+          "never press CONTROL yourself.")
     if manual_drop:
-        print("DROP is manual for this set: press DROP at FC + dev yourself.")
+        print("DROP is manual for this set: you mark FCs and press DROP at FC + dev yourself.")
+    else:
+        print("The ear marks FCs for this set (run it with --push-artisan); keep your hands off the FCs button.")
     if getattr(args, "install_local", False):
         _install_local_alarms(res["rows"])
 

@@ -166,8 +166,11 @@ class EarSession:
         """The ear joined after CHARGE (batch #25 on 2026-09-13: two false
         starts, then a listen that connected after the charge). With no roast
         clock every crack stayed un-armed and FC was never declared. Assume
-        the roast is ARM_FALLBACK_S in — DRY lands 6-7 min after charge, so
-        the rule's minimum-elapsed gate is satisfied — and count from here.
+        the roast is ARM_FALLBACK_S in — DRY lands 6-7 min after charge — and
+        count from here; the rule's minimum-elapsed gate (a little above
+        that) opens a minute later. A declaration on this provisional clock
+        alerts but is never pushed into Artisan: the clock is a guess, a
+        pushed FCs cannot be taken back, and the DROP row is timed from it.
         """
         self.rule_epoch = time.time() - ARM_FALLBACK_S
         self.charge_source = "missing"
@@ -279,7 +282,9 @@ class EarSession:
                 if not self.record_only:
                     shown = fc if self.charge_epoch is not None else {**fc, "elapsed": None}
                     alert.announce_fc(shown, self.tracker.cracks_per_minute(elapsed))
-                if self.push_artisan and self.fc_pushed is None:
+                if self.push_artisan and self.fc_pushed is None and self.charge_epoch is None:
+                    print("  !! provisional roast clock (no CHARGE seen): FCs NOT pushed, mark it yourself")
+                elif self.push_artisan and self.fc_pushed is None:
                     sent = self.artisan.push_fc()
                     self.fc_pushed = {"epoch": round(time.time(), 3), "sent": bool(sent),
                                       "latency_s": round(time.time() - fc["epoch"], 1)

@@ -72,7 +72,7 @@ def test_export_alarms_writes_alrm_and_marks_the_profile(tmp_path, monkeypatch, 
     assert path.exists() and "Written:" in out and "DROP is manual" in out
     data = json.loads(path.read_text())
     assert len(data["alarmflags"]) == len(data["alarmstrings"]) > 10
-    assert "Heater 90%" in out and "Event Button 1 (Motor On)" in out
+    assert "Heater 90%" in out and "Event Button 3 (Control" in out
     prof = json.loads((tmp_path / "beans" / "rwanda-test" / "profile-v1.json").read_text())
     assert prof["status"] == "exported" and prof["exported"]["manual_drop"] is True
     assert prof["exported"]["files"] == [str(path)]

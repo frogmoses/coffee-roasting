@@ -2,9 +2,13 @@
 
 import json
 
+from pathlib import Path
+
 import alarm_export as ae
 import roast_schedule as rs
 from artisan_conf import ArtisanConf
+
+REPO_CONF = Path(__file__).resolve().parents[1] / "artisan" / "Artisan.conf"
 
 
 def _curve():
@@ -51,17 +55,27 @@ def test_paired_rows_encode_bt_with_time_fallback_and_guards():
     assert roast["cond"] == ae.COND_GT and roast["temperature"] == 0 and roast["action"] == ae.ACT_NONE
     i_desc, desc = _by_label(rows, "past the turning point")
     assert desc["cond"] == ae.COND_LT and desc["temperature"] == 252     # lowest trigger - 10
-    # warm-up
+    assert desc["offset"] == ae.DESCENT_FALLBACK_S == 45                  # late-CHARGE clock twin
+    # warm-up: control first (the driver drops commands until control is on),
+    # then the drum state buttons, then heater/fan
+    i_ctrl, ctrl = _by_label(rows, "Hottop control on")
+    assert ctrl["from"] == ae.FROM_ON and ctrl["offset"] == 1
+    assert ctrl["action"] == ae.ACT_BUTTON and ctrl["string"] == "3" and ctrl["negguard"] == i_roast
     i_motor, motor = _by_label(rows, "drum motor on")
-    assert motor["from"] == ae.FROM_ON and motor["offset"] == 1
-    assert motor["action"] == ae.ACT_BUTTON and motor["string"] == "1" and motor["negguard"] == i_roast
+    assert motor["from"] == ae.FROM_ON and motor["offset"] == 3 and i_motor > i_ctrl
+    assert motor["action"] == ae.ACT_BUTTON and motor["string"] == "1,5,8" and motor["negguard"] == i_roast
     i_pre, pre = _by_label(rows, "370F reached")
     assert pre["source"] == ae.SRC_BT and pre["temperature"] == 370 and pre["string"] == "0"
     i_pop, pop = _by_label(rows, "charge pop-up")
     assert pop["cond"] == ae.COND_LT and pop["temperature"] == 300 and pop["guard"] == i_pre
-    # two rows say heater 100%; the one at ON+3s is But-Not guarded by the preheat row
-    on_rows = [r for r in rows if r["from"] == ae.FROM_ON and r["offset"] == 3]
-    assert on_rows[0]["negguard"] == i_pre
+    # heater 100% and fan 0% at ON+5s are But-Not guarded by the preheat row
+    # (a hot drum at ON must not have its cooling undone)
+    on_rows = [r for r in rows if r["from"] == ae.FROM_ON and r["offset"] == 5]
+    assert {r["action"] for r in on_rows} == {ae.ACT_HEATER, ae.ACT_FAN}
+    assert all(r["negguard"] == i_pre for r in on_rows)
+    # the missed-FC nag sits between the FC marker and the drop
+    _, nag = _by_label(rows, "no FCs mark yet")
+    assert nag["temperature"] == ae.FC_NAG_BT == 372 and nag["action"] == ae.ACT_POPUP and nag["beep"] == 1
     # staircase
     _, fan10 = _by_label(rows, "fan 10% at CHARGE + 0:15")
     assert fan10["from"] == ae.FROM_CHARGE and fan10["offset"] == 15 and fan10["source"] == ae.SRC_NONE
@@ -130,8 +144,9 @@ def test_conf_round_trip_decodes_in_artisan_conf(tmp_path):
     conf.save(path)
     decoded = ArtisanConf.load(path).alarms()
     assert len(decoded) == len(rows)
-    motor = next(r for r in decoded if r["action"] == "Event Button")
-    assert motor["from"] == "ON" and motor["string"] == "1" and motor["negguard"] == 0
+    buttons = [r for r in decoded if r["action"] == "Event Button"]
+    assert [b["string"] for b in buttons] == ["3", "1,5,8"]
+    assert all(b["from"] == "ON" and b["negguard"] == 0 for b in buttons)
     drop = next(r for r in decoded if r["action"] == "DROP" and r["from"] == "FC START")
     assert drop["offset_s"] == 132
     assert ArtisanConf.load(path).roundtrip_mismatches() == []
@@ -143,7 +158,22 @@ def test_conf_round_trip_decodes_in_artisan_conf(tmp_path):
 def test_describe_rows_reads_like_the_dialog():
     rows = ae.schedule_to_alarms(_schedule(), _envelope(), ear_latency_s=18)["rows"]
     text = "\n".join(ae.describe_rows(rows))
-    assert "ON +0:01" in text and "Event Button 1 (Motor On)" in text
+    assert "ON +0:01" in text and "Event Button 3 (Control On)" in text
+    assert "Event Button 1,5,8 (Motor On, Door Close, Stirrer Off)" in text
+    assert "CHARGE BT < 252F or +0:45" in text
     assert "CHARGE BT > 262F or +" in text and "Heater 80%" in text
     assert "FCs +2:12" in text and "-> DROP *" in text
     assert "[unless #1]" in text and "[if #" in text
+
+
+def test_button_numbers_match_the_roaster_settings_file():
+    """The Event Button rows name custom buttons by 1-based slot; the slots
+    must hold the commands the rows assume, in the repo copy of the
+    roaster's settings (deployed with artisan/deploy.sh push)."""
+    buttons = {b["index"]: b for b in ArtisanConf.load(REPO_CONF).custom_buttons()}
+    expect = {ae.CONTROL_BUTTON: "control(1)", ae.MOTOR_BUTTON: "motor(1)",
+              ae.DOOR_CLOSE_BUTTON: "solenoid(0)", ae.STIRRER_OFF_BUTTON: "stirrer(0)"}
+    for slot, command in expect.items():
+        assert buttons[slot]["action"] == "Hottop Command", slot
+        assert buttons[slot]["command"] == command, slot
+        assert buttons[slot]["visible"], slot

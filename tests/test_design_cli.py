@@ -81,7 +81,7 @@ def test_profile_design_saves_a_version_and_export_writes_the_sheet(tmp_path, mo
     # sheet command regenerates from the stored export settings
     sheet.unlink()
     analyze.cmd_sheet(_Args(bean="rwanda", version=None))
-    assert sheet.exists() and "Event Button 1 (Motor On)" in sheet.read_text()
+    assert sheet.exists() and "Event Button 3 (Control On)" in sheet.read_text()
 
 
 def test_profile_design_falls_back_to_the_staircase(tmp_path, monkeypatch, capsys):

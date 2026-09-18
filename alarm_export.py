@@ -21,8 +21,21 @@ Two things the encoding forces:
 - The warm-up runs From ON with the drum empty, so a `BT > 370 -> heater 0`
   row must never fire during a roast. Every From-ON row is But-Not guarded
   by a "roast started" marker (`From CHARGE, BT > 0`), and the rows that
-  fire immediately at ON (motor on, heater 100) come before the roast can
-  start anyway.
+  fire immediately at ON (control on, motor on, heater 100) come before the
+  roast can start anyway.
+- Artisan's Hottop driver discards every command until control is active
+  (`hottop.py setHottop` stores nothing unless `_control_active`), and the
+  From-ON rows fire seconds after ON, long before an operator could press
+  CONTROL. So the first warm-up row presses a custom button whose Hottop
+  command is `control(1)`: `main.py` runs `HottopControlOn(autosuper=True)`
+  from it, which turns on super-user mode, takes control, and starts the
+  drum. Taking control is idempotent, so the row is safe on every ON. That
+  call is scheduled with a one-shot timer, so the buttons that must run
+  under control (motor, door, stirrer) sit in a later row.
+- The descent marker (`BT < lowest trigger - 10`) also carries a clock
+  twin at CHARGE + 45 s: a CHARGE marked after BT has already rebounded
+  past the lowest trigger would otherwise never arm the staircase, and
+  the heater would sit at 100% until the 398F ceiling.
 
 The rows go out two ways: `.alrm` (JSON with plural keys, loaded via Config
 -> Alarms -> Load, replaces the whole table) and the `[Alarms]` section of
@@ -46,11 +59,25 @@ SRC_NONE, SRC_BT = -3, 1
 # Action codes (alarmaction); slider 1 is the Hottop fan, slider 4 the heater
 ACT_NONE, ACT_POPUP, ACT_BUTTON, ACT_FAN, ACT_HEATER = -1, 0, 2, 3, 6
 ACT_DROP, ACT_COOL = 13, 14
-# The roaster's custom button 1 is "Motor On" (`motor(1)`), 1-based as the
-# Event Button action expects it.
-MOTOR_BUTTON = 1
-# The descent marker sits this far under the lowest BT trigger.
+# The roaster's custom buttons (artisan/Artisan.conf [ExtraEventButtons]),
+# 1-based as the Event Button action expects them. A test pins these to the
+# repo copy of the settings file.
+CONTROL_BUTTON = 3       # "Control On": control(1) -> super-user + control + drum
+MOTOR_BUTTON = 1         # "Motor On": motor(1)
+DOOR_CLOSE_BUTTON = 5    # "Door Close": solenoid(0)
+STIRRER_OFF_BUTTON = 8   # "Stirrer Off": stirrer(0)
+BUTTON_NAMES = {CONTROL_BUTTON: "Control On", MOTOR_BUTTON: "Motor On",
+                DOOR_CLOSE_BUTTON: "Door Close", STIRRER_OFF_BUTTON: "Stirrer Off"}
+# The descent marker sits this far under the lowest BT trigger ...
 DESCENT_MARGIN_F = 10
+# ... and also fires by clock this long after CHARGE (BT is near 185F on
+# the median curve by then), so a late CHARGE mark still arms the staircase.
+DESCENT_FALLBACK_S = 45
+# A pop-up when BT passes this with the roast still running: on this machine
+# every first crack has been marked by 366F, so a roast at this BT with no
+# FCs mark has missed it (the ear missed, or the operator did). The row
+# cannot know whether FCs is marked; it nags every roast, once.
+FC_NAG_BT = 372
 # COOL END this long after DROP (0 disables the row). The DROP button opens
 # the door and runs the cooling tray; COOL END turns everything off.
 DEFAULT_COOL_S = 240
@@ -78,9 +105,10 @@ def _row(**kw):
 
 
 def warmup_rows(charge, roast_marker, motor_button=MOTOR_BUTTON):
-    """The From-ON warm-up: motor on, heater 100 to the preheat BT, heater
-    off and fan up to cool, then a "charge now" pop-up at the charge BT
-    with the fan back to 0 and the heater to 100.
+    """The From-ON warm-up: control on (drum starts), motor on with the door
+    closed and the stirrer off, heater 100 and fan 0 to the preheat BT,
+    heater off and fan up to cool, then a "charge now" pop-up at the charge
+    BT with the fan back to 0 and the heater to 100.
 
     `roast_marker` is the 0-based index of the "roast started" row; every
     warm-up row is But-Not guarded by it. Returns the rows; the caller
@@ -88,11 +116,16 @@ def warmup_rows(charge, roast_marker, motor_button=MOTOR_BUTTON):
     """
     w = dict(DEFAULT_WARMUP, **(charge.get("warmup") or {}))
     preheat, charge_bt = w["preheat_bt"], w["charge_bt"]
+    state_buttons = ",".join(str(b) for b in (motor_button, DOOR_CLOSE_BUTTON, STIRRER_OFF_BUTTON))
     rows = [
-        _row(**{"from": FROM_ON}, offset=1, action=ACT_BUTTON, string=str(motor_button),
-             negguard=roast_marker, label="warm-up: drum motor on"),
-        _row(**{"from": FROM_ON}, offset=3, action=ACT_HEATER, string="100",
+        _row(**{"from": FROM_ON}, offset=1, action=ACT_BUTTON, string=str(CONTROL_BUTTON),
+             negguard=roast_marker, label="warm-up: Hottop control on (super-user, drum)"),
+        _row(**{"from": FROM_ON}, offset=3, action=ACT_BUTTON, string=state_buttons,
+             negguard=roast_marker, label="warm-up: drum motor on, door closed, stirrer off"),
+        _row(**{"from": FROM_ON}, offset=5, action=ACT_HEATER, string="100",
              negguard=roast_marker, label="warm-up: heater 100%"),
+        _row(**{"from": FROM_ON}, offset=5, action=ACT_FAN, string="0",
+             negguard=roast_marker, label="warm-up: fan 0%"),
         _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_GT, temperature=preheat,
              action=ACT_HEATER, string=str(w["cool_heater"]), beep=1, negguard=roast_marker,
              label=f"warm-up: {preheat}F reached, heater {w['cool_heater']}%"),
@@ -107,10 +140,10 @@ def warmup_rows(charge, roast_marker, motor_button=MOTOR_BUTTON):
         _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_LT, temperature=charge_bt,
              action=ACT_HEATER, string="100", negguard=roast_marker, label="warm-up: heater 100%"),
     ]
-    # Heater 100 at ON must not undo a heater-off that fired first (a hot
-    # drum at ON): But Not the "preheat reached" row. The three "cooled to
-    # charge" rows fire only after the preheat row: If Alarm it.
-    return rows, {"heater_on": 1, "preheat": 2, "cooled": (4, 5, 6)}
+    # Heater 100 / fan 0 at ON must not undo a heater-off / fan-up that fired
+    # first (a hot drum at ON): But Not the "preheat reached" row. The three
+    # "cooled to charge" rows fire only after the preheat row: If Alarm it.
+    return rows, {"heater_on": 2, "fan_on": 3, "preheat": 4, "cooled": (6, 7, 8)}
 
 
 def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0,
@@ -146,6 +179,7 @@ def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0
         for r in wrows:
             add(r)
         rows[base + idx["heater_on"]]["negguard"] = base + idx["preheat"]
+        rows[base + idx["fan_on"]]["negguard"] = base + idx["preheat"]
         for i in idx["cooled"]:
             rows[base + i]["guard"] = base + idx["preheat"]
 
@@ -160,7 +194,9 @@ def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0
             errors.append(f"lowest BT trigger {min(bt_triggers)}F leaves no room for the "
                           f"descent marker above TP ({tp_bt:.0f}F)")
         descent = add(_row(source=SRC_BT, cond=COND_LT, temperature=level,
-                           label=f"marker: past the turning point (BT < {level}F)"))
+                           offset=DESCENT_FALLBACK_S,
+                           label=f"marker: past the turning point (BT < {level}F "
+                                 f"or CHARGE + {fmt_mmss(DESCENT_FALLBACK_S)})"))
 
     # -- pre-FC moves
     for mv in moves:
@@ -193,6 +229,9 @@ def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0
              label=f"pop-up at {guards['fc_popup_bt']}F (FC imminent)"))
     fc_guard = add(_row(source=SRC_BT, cond=COND_GT, temperature=guards["fc_min_bt"],
                         label=f"marker: FC possible (BT > {guards['fc_min_bt']}F)"))
+    add(_row(source=SRC_BT, cond=COND_GT, temperature=FC_NAG_BT, action=ACT_POPUP, beep=1,
+             string="No FCs mark yet? Mark it NOW (the drop timer runs from it)",
+             label=f"pop-up at {FC_NAG_BT}F (no FCs mark yet? mark it now)"))
 
     # -- post-FC moves and the drop
     for mv in schedule.get("post_fc", []):
@@ -301,7 +340,8 @@ def _what(r):
     if a == ACT_FAN:
         return f"Fan {r['string']}%"
     if a == ACT_BUTTON:
-        return f"Event Button {r['string']}" + (" (Motor On)" if r["string"] == str(MOTOR_BUTTON) else "")
+        names = [BUTTON_NAMES.get(int(b.strip()), "?") for b in r["string"].split(",") if b.strip().isdigit()]
+        return f"Event Button {r['string']}" + (f" ({', '.join(names)})" if names else "")
     if a == ACT_POPUP:
         return f"Pop Up '{r['string']}'"
     if a == ACT_NONE:

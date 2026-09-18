@@ -117,3 +117,10 @@ def test_register_crack_pushes_once_and_never_in_record_only():
     s = make(push_artisan=True, connected=False)
     s._register_crack(crack())
     assert s.artisan.pushes == 1 and s.fc_pushed["sent"] is False
+
+    # a late-started ear counts on a provisional clock: alert, never push
+    s = make(push_artisan=True)
+    s.charge_epoch = None
+    s.rule_epoch = time.time() - 600
+    s._register_crack(crack())
+    assert s.artisan.pushes == 0 and s.fc_pushed is None

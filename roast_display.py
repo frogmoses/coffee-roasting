@@ -690,7 +690,7 @@ def display_profile(profile, envelope=None):
     if warm:
         lines.append(_box_separator(w))
         lines += _wrap_rows(
-            f"Warm-up: motor on, heater 100% to {warm.get('preheat_bt', 370)}F, then heater "
+            f"Warm-up: control on, motor on, heater 100% to {warm.get('preheat_bt', 370)}F, then heater "
             f"{warm.get('cool_heater', 0)}% / fan {warm.get('cool_fan', 100)}% down to "
             f"{warm.get('charge_bt', 300)}F, heater 100%, fan 0%, charge.", w, prefix=" ", indent="   ")
     guards = sched.get("guards") or {}

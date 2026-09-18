@@ -56,10 +56,12 @@ def test_render_sheet_manual_drop_first_session(tmp_path, monkeypatch):
     html = ss.render_sheet(prof, {"name": "Rwanda Test"}, _envelope(), rows, alarm_file="profile-v2.alrm")
     assert "<title>Rwanda Test v2</title>" in html and "<style>" in html
     assert "Config &rarr; Alarms &rarr; Load <code>profile-v2.alrm</code>" in html
-    assert "Never press CONTROL again today" in html
+    assert "Do not press CONTROL yourself" in html and "DROP is the panic button" in html
+    assert "COOL END" in html and "save the log" in html
+    assert "You mark FCs" in html                                 # manual session: one marker
     assert "The alarms run the warm-up" in html and "370F" in html
     assert "Heater -&gt; 80% at BT 262F" in html and "bean temp" in html
-    assert "Event Button 1 (Motor On)" in html                    # the alarm table
+    assert "Event Button 3 (Control On)" in html                  # the alarm table
     assert "Batch 1 &middot; design" in html and "FC + 2:20" in html and "FC + 1:50" in html
     assert "press <strong>DROP at 2:20</strong>" in html           # manual drop, mm:ss
     assert "Hario Switch" in html and "Triangle first" in html and "Would you happily drink it again?" in html
@@ -73,7 +75,8 @@ def test_render_sheet_timed_drop_and_no_alarms():
     prof = _profile(exported={"at": "2026-09-14T12:00:00", "mode": "paired", "ear_latency_s": 18.0,
                               "manual_drop": False, "files": []})
     html = ss.render_sheet(prof, None, _envelope(), None)
-    assert "The DROP alarm fires <strong>2:20</strong>" in html and "minus 18 s" in html
+    assert "The DROP alarm fires <strong>2:20</strong>" in html and "minus its 18 s latency" in html
+    assert "keep your hands off the FCs button" in html          # ear session: one marker
     assert "Warm up by hand" in html and "row by row" not in html
     env = dict(_envelope(), borrowed_from="Bolivia Caranavi")
     html = ss.render_sheet(prof, None, env, None)

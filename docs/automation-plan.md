@@ -143,7 +143,11 @@ analyzer still sees the true onset and the mark's offset from it.
 - **The Hottop obeys Artisan after OFF without a power cycle**, with no
   cooling countdown and no ready-screen rule (handshake tests, empty drum).
   Releasing control (the CONTROL button) is what turns the machine off, so
-  the routine is: press CONTROL once per day, never again. Keep ON is not
+  the routine is: never press CONTROL. The first From-ON alarm row presses a
+  custom button whose Hottop command is `control(1)`, which takes control
+  (super-user included) on every ON; the driver discards commands until
+  control is active, so this row must come before every other warm-up row
+  (2026-09-18 review). Keep ON is not
   needed: From-ON alarm rows fire on a manual ON, and with `autosaveflag=0`
   Keep ON would reset an unsaved roast. COOL END stops the drum motor; the
   warm-up rows start with an Event Button row pressing custom button 1

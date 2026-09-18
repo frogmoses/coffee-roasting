@@ -219,7 +219,11 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     pred = profile.get("predicted") or sched.get("predicted") or {}
     exported = profile.get("exported") or {}
     manual_drop = bool(exported.get("manual_drop", True))
-    latency = exported.get("ear_latency_s") or (envelope or {}).get("ear_latency_s") or 0
+    # A manual session times the drop from the operator's own mark; the
+    # ear's latency only matters when the ear marks FCs and a DROP row runs
+    # from that mark.
+    latency = 0 if manual_drop else (exported.get("ear_latency_s") or (envelope or {}).get("ear_latency_s") or 0)
+    mode = exported.get("mode") or "paired"
     dev = int(sched.get("drop", {}).get("seconds", 150))
     batches = batches if batches is not None else batches_from_profile(profile, envelope)
     warm = (sched.get("charge") or {}).get("warmup") or {}
@@ -260,24 +264,34 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     a("<section>")
     a('<div class="section-head"><div class="eyebrow">Before the first charge</div><h2>Load the set, start the ear, let the warm-up run</h2></div>')
     a('<ol class="steps">')
+    a("<li>Before Artisan opens on the roaster, the settings file must match the repo copy (event quantifiers off, the Control On button): "
+      "<code>DEPLOY_SSH_HOST=roaster artisan/deploy.sh diff</code> prints nothing; if it does, <code>push</code> with Artisan closed, then start Artisan.</li>")
+    a(f"<li>Check the microphone: <code>run_ear ear.py level</code> with the empty drum running. Peaks near -30 dBFS and no clipping; "
+      "snap your fingers by the capsule and the cracks column climbs. Adjust the capture gain in <code>alsamixer -c 1</code> until it does.</li>")
+    a(f"<li>Start the ear on the roaster: <code>run_ear ear.py listen --bean \"{_e(bean)}\"</code>. One listen covers the day.</li>")
     a(f"<li>Name the roast in Artisan (<strong>{_e(bean)}</strong>) before you press ON, so the batch groups with its bean.</li>")
     if alarm_file:
         a(f"<li>Config &rarr; Alarms &rarr; Load <code>{_e(alarm_file)}</code>. Check the table matches the list below.</li>")
-    a(f"<li>Start the ear on the roaster: <code>run_ear ear.py listen --bean \"{_e(bean)}\"</code>. One listen covers the day.</li>")
-    a("<li>ON, then right-click the timer LCD until the message bar says <strong>super on</strong>, then CONTROL once (<strong>Hottop control turned on</strong>). "
-      "<strong>Never press CONTROL again today</strong>: releasing control turns the Hottop off.</li>")
     if has_warmup_rows:
-        a(f"<li>The alarms run the warm-up: drum motor on, heater 100% until BT reaches <strong>{_e(warm.get('preheat_bt', 370))}F</strong>, "
+        a("<li>ON. The first alarm row takes Hottop control (super-user comes with it) and starts the drum; the next closes the door, stops the stirrer, "
+          "and sets heater 100% and fan 0%. <strong>Do not press CONTROL yourself, today or ever</strong>: releasing control turns the Hottop off.</li>")
+        a(f"<li>The alarms run the warm-up: heater 100% until BT reaches <strong>{_e(warm.get('preheat_bt', 370))}F</strong>, "
           f"then heater {_e(warm.get('cool_heater', 0))}% and fan {_e(warm.get('cool_fan', 100))}% until BT falls to "
           f"<strong>{_e(warm.get('charge_bt', 300))}F</strong>, then fan 0% and heater 100% with a pop-up that says charge. "
-          "Note the ET reading at that moment.</li>")
+          "Charge as soon as it does; write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>")
     else:
+        a("<li>ON, then right-click the timer LCD until the message bar says <strong>super on</strong>, then CONTROL once (<strong>Hottop control turned on</strong>). "
+          "<strong>Never press CONTROL again today</strong>: releasing control turns the Hottop off.</li>")
         a(f"<li>Warm up by hand: drum motor on, heater 100% and overshoot to about <strong>{_e(warm.get('preheat_bt', 370))}F</strong> BT; "
           f"then heater {_e(warm.get('cool_heater', 0))}%, fan {_e(warm.get('cool_fan', 100))}%, let BT fall to <strong>{_e(warm.get('charge_bt', 300))}F</strong>; "
           "heater back to 100%, fan 0%, and charge. Note the ET reading at that moment.</li>")
-    a("<li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack.</li>")
-    a("<li>Between batches: DROP, COOL END (the drum stops), OFF, save the profile, then ON again. The warm-up repeats on its own. "
-      "Charge when BT is at the charge point <strong>and</strong> ET is within about 10F of the batch-1 reading.</li>")
+    a("<li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack. "
+      "If the timer is not running you have not pressed START and no alarm is watching: DROP and start over.</li>")
+    a("<li><strong>DROP is the panic button.</strong> Never OFF during a roast: with recording off no alarm evaluates, the 398F drop included, "
+      "and the heater stays where it was.</li>")
+    a("<li>Between batches, in this order: DROP; <strong>COOL END</strong> (always, before OFF: it closes the door and stops the drum, fan, and stirrer; "
+      "after OFF nothing will); OFF; <strong>save the log</strong> (the ear waits for that save before it can start the next batch's session); then ON. "
+      "The warm-up repeats on its own.</li>")
     a("</ol></section>")
 
     # -- schedule
@@ -291,8 +305,16 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         a(f"<tr{cls}><td>{_e(r['when'])}</td><td class=\"num\">{_e(bt)}</td><td>{_e(r['text'])}</td>"
           f"<td><span class=\"tag {'bean' if r['kind'] == 'bt' else 'coil'}\">{_e(kind)}</span></td><td>{_e(r.get('why', ''))}</td></tr>")
     a("</tbody></table></div>")
-    a("<p class=\"a\" style=\"color: var(--ink-2)\">Times are expected, from the measured curve; a bean-temp trigger fires when BT gets there, "
-      "or at the fallback time if it lags. On a cool day the clock moves land early in BT and first crack comes later; that is the weather, not the plan.</p>")
+    if mode == "paired":
+        a("<p class=\"a\" style=\"color: var(--ink-2)\">Times are expected, from the measured curve; a bean-temp trigger fires when BT gets there, "
+          "or at the fallback time if it lags. On a cool day the clock moves land early in BT and first crack comes later; that is the weather, not the plan.</p>")
+    elif mode == "bt":
+        a("<p class=\"a\" style=\"color: var(--ink-2)\">Times are expected, from the measured curve; the heater cuts fire on bean temperature only, "
+          "so every batch of the set gets the same cut at the same BT whatever the drum's heat-soak or the weather does to the clock. "
+          "On a cool day everything simply comes later.</p>")
+    else:
+        a("<p class=\"a\" style=\"color: var(--ink-2)\">Every move fires on the clock from CHARGE; the BT column is what the measured curve expects. "
+          "On a cool day the cuts land at a lower BT and first crack comes later; that is the weather, not the plan.</p>")
     a("</section>")
 
     # -- what Artisan does on its own
@@ -323,18 +345,25 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     a("<section>")
     a('<div class="section-head"><div class="eyebrow">First crack</div><h2>Mark it, then the timer runs</h2></div>')
     a('<ol class="steps">')
-    a("<li>The ear rings its bell about 15-20 s after the first cracks; it is a confirmation, not the earliest signal. "
-      "<strong>Mark FCs at the first distinct crack</strong> or at 363F BT, whichever comes first.</li>")
     if manual_drop:
+        a("<li><strong>You mark FCs</strong>, at the first distinct crack or at 363F BT, whichever comes first. The ear's bell is confirmation, "
+          "about 18 s behind the first cracks; if it rings before you have marked, mark now. The 372F pop-up means you have missed it: mark at once.</li>")
         for c in batches:
-            a(f"<li>Batch {c['order']}: start a stopwatch at FCs and press <strong>DROP at {_e(fmt_mmss(c['dev_s']))}</strong> "
+            a(f"<li>Batch {c['order']}: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at {_e(fmt_mmss(c['dev_s']))}</strong> "
               f"(that is {c['dev_s']} seconds, read the stopwatch as minutes:seconds).</li>")
         a("<li>Drop early if BT reaches 400F; the 398F alarm will do it for you.</li>")
     else:
-        a(f"<li>The DROP alarm fires <strong>{_e(fmt_mmss(dev))}</strong> after your FCs mark"
-          + (f" (minus {latency:.0f} s when the ear marks it)" if latency else "") + ". "
+        a("<li><strong>The ear marks FCs; keep your hands off the FCs button.</strong> The DROP row is timed from the ear's mark minus its "
+          f"{latency:.0f} s latency, so a hand mark would shorten development by that much. The ear must be running with <code>--push-artisan</code>.</li>")
+        a(f"<li>The DROP alarm fires <strong>{_e(fmt_mmss(dev))}</strong> of development after first crack. "
           "For the short and long batches load the matching set or drop by hand at the card's time.</li>")
+        a("<li>If the 372F pop-up fires with no FCs mark, the ear missed it: mark FCs yourself and press DROP at the card's time minus "
+          f"{latency:.0f} s on your stopwatch (the row will fire {latency:.0f} s early from your mark; beat it or accept it).</li>")
     for w in profile.get("watch_for") or []:
+        # In a manual session the designer's lines about the ear's lag would
+        # put the stopwatch 18 s off the step above; leave them out.
+        if manual_drop and any(word in w.lower() for word in ("latency", "lag", "ear's mark", "machine's fcs")):
+            continue
         a(f"<li>Watch for: {_e(w)}</li>")
     a("</ol></section>")
 

@@ -158,18 +158,21 @@
 <span>Measured FC <b>9:16 to 11:24</b> over 10 roasts</span>
 <span>Development <b>FC + 2:30</b>, drop ~380F</span>
 <span>Safety eject <b>408F</b></span>
-<span>Alarm set <b>profile-v2.alrm</b></span>
+<span>Alarm set <b>profile-v2-bt.alrm</b></span>
 </div></header>
 <section>
 <div class="section-head"><div class="eyebrow">Before the first charge</div><h2>Load the set, start the ear, let the warm-up run</h2></div>
 <ol class="steps">
-<li>Name the roast in Artisan (<strong>Rwanda Rusizi Gaseke</strong>) before you press ON, so the batch groups with its bean.</li>
-<li>Config &rarr; Alarms &rarr; Load <code>profile-v2.alrm</code>. Check the table matches the list below.</li>
+<li>Before Artisan opens on the roaster, the settings file must match the repo copy (event quantifiers off, the Control On button): <code>DEPLOY_SSH_HOST=roaster artisan/deploy.sh diff</code> prints nothing; if it does, <code>push</code> with Artisan closed, then start Artisan.</li>
+<li>Check the microphone: <code>run_ear ear.py level</code> with the empty drum running. Peaks near -30 dBFS and no clipping; snap your fingers by the capsule and the cracks column climbs. Adjust the capture gain in <code>alsamixer -c 1</code> until it does.</li>
 <li>Start the ear on the roaster: <code>run_ear ear.py listen --bean "Rwanda Rusizi Gaseke"</code>. One listen covers the day.</li>
-<li>ON, then right-click the timer LCD until the message bar says <strong>super on</strong>, then CONTROL once (<strong>Hottop control turned on</strong>). <strong>Never press CONTROL again today</strong>: releasing control turns the Hottop off.</li>
-<li>The alarms run the warm-up: drum motor on, heater 100% until BT reaches <strong>370F</strong>, then heater 0% and fan 100% until BT falls to <strong>300F</strong>, then fan 0% and heater 100% with a pop-up that says charge. Note the ET reading at that moment.</li>
-<li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack.</li>
-<li>Between batches: DROP, COOL END (the drum stops), OFF, save the profile, then ON again. The warm-up repeats on its own. Charge when BT is at the charge point <strong>and</strong> ET is within about 10F of the batch-1 reading.</li>
+<li>Name the roast in Artisan (<strong>Rwanda Rusizi Gaseke</strong>) before you press ON, so the batch groups with its bean.</li>
+<li>Config &rarr; Alarms &rarr; Load <code>profile-v2-bt.alrm</code>. Check the table matches the list below.</li>
+<li>ON. The first alarm row takes Hottop control (super-user comes with it) and starts the drum; the next closes the door, stops the stirrer, and sets heater 100% and fan 0%. <strong>Do not press CONTROL yourself, today or ever</strong>: releasing control turns the Hottop off.</li>
+<li>The alarms run the warm-up: heater 100% until BT reaches <strong>370F</strong>, then heater 0% and fan 100% until BT falls to <strong>300F</strong>, then fan 0% and heater 100% with a pop-up that says charge. Charge as soon as it does; write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>
+<li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack. If the timer is not running you have not pressed START and no alarm is watching: DROP and start over.</li>
+<li><strong>DROP is the panic button.</strong> Never OFF during a roast: with recording off no alarm evaluates, the 398F drop included, and the heater stays where it was.</li>
+<li>Between batches, in this order: DROP; <strong>COOL END</strong> (always, before OFF: it closes the door and stops the drum, fan, and stirrer; after OFF nothing will); OFF; <strong>save the log</strong> (the ear waits for that save before it can start the next batch's session); then ON. The warm-up repeats on its own.</li>
 </ol></section>
 <section>
 <div class="section-head"><div class="eyebrow">Schedule</div><h2>Every batch, from charge to first crack</h2></div>
@@ -183,29 +186,32 @@
 <tr><td>7:50</td><td class="num">321F</td><td>Heater -&gt; 60% at BT 321F</td><td><span class="tag bean">bean temp</span></td><td>Measured staircase; holds 60% into and through FC for the linear ~7.9 F/min post-FC rise, staying at/above the 40% floor.</td></tr>
 <tr class="fc"><td>FC+2:30</td><td class="num">380F</td><td>DROP at FC + 2:30</td><td><span class="tag coil">clock</span></td><td></td></tr>
 </tbody></table></div>
-<p class="a" style="color: var(--ink-2)">Times are expected, from the measured curve; a bean-temp trigger fires when BT gets there, or at the fallback time if it lags. On a cool day the clock moves land early in BT and first crack comes later; that is the weather, not the plan.</p>
+<p class="a" style="color: var(--ink-2)">Times are expected, from the measured curve; the heater cuts fire on bean temperature only, so every batch of the set gets the same cut at the same BT whatever the drum's heat-soak or the weather does to the clock. On a cool day everything simply comes later.</p>
 </section>
 <section>
 <div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row</h2></div>
 <pre> 1. CHARGE BT &gt; 0F             -&gt; (marker, no action)
- 2. ON +0:01                   -&gt; Event Button 1 (Motor On)  [unless #1]
- 3. ON +0:03                   -&gt; Heater 100%  [unless #4]
- 4. ON BT &gt; 370F               -&gt; Heater 0% *  [unless #1]
- 5. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
- 6. ON BT &lt; 300F               -&gt; Pop Up &#x27;CHARGE NOW (300F): heater 100, fan 0&#x27; *  [if #4, unless #1]
- 7. ON BT &lt; 300F               -&gt; Fan 0%  [if #4, unless #1]
- 8. ON BT &lt; 300F               -&gt; Heater 100%  [if #4, unless #1]
- 9. CHARGE BT &lt; 252F           -&gt; (marker, no action)
-10. CHARGE +0:15               -&gt; Fan 10%
-11. CHARGE +1:30               -&gt; Fan 20%
-12. CHARGE BT &gt; 262F or +4:20  -&gt; Heater 90%  [if #9]
-13. CHARGE BT &gt; 281F or +5:11  -&gt; Heater 80%  [if #9]
-14. CHARGE BT &gt; 303F or +6:38  -&gt; Heater 70%  [if #9]
-15. CHARGE BT &gt; 321F or +7:50  -&gt; Heater 60%  [if #9]
-16. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
-17. CHARGE BT &gt; 350F           -&gt; (marker, no action)
-18. CHARGE BT &gt; 398F           -&gt; DROP *
-19. DROP +4:00                 -&gt; COOL END</pre>
+ 2. ON +0:01                   -&gt; Event Button 3 (Control On)  [unless #1]
+ 3. ON +0:03                   -&gt; Event Button 1,5,8 (Motor On, Door Close, Stirrer Off)  [unless #1]
+ 4. ON +0:05                   -&gt; Heater 100%  [unless #6]
+ 5. ON +0:05                   -&gt; Fan 0%  [unless #6]
+ 6. ON BT &gt; 370F               -&gt; Heater 0% *  [unless #1]
+ 7. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
+ 8. ON BT &lt; 300F               -&gt; Pop Up &#x27;CHARGE NOW (300F): heater 100, fan 0&#x27; *  [if #6, unless #1]
+ 9. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
+10. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
+11. CHARGE BT &lt; 252F or +0:45  -&gt; (marker, no action)
+12. CHARGE +0:15               -&gt; Fan 10%
+13. CHARGE +1:30               -&gt; Fan 20%
+14. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #11]
+15. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #11]
+16. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #11]
+17. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #11]
+18. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
+19. CHARGE BT &gt; 350F           -&gt; (marker, no action)
+20. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
+21. CHARGE BT &gt; 398F           -&gt; DROP *
+22. DROP +4:00                 -&gt; COOL END</pre>
 <p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
 </section>
 <section>
@@ -220,15 +226,14 @@
 <section>
 <div class="section-head"><div class="eyebrow">First crack</div><h2>Mark it, then the timer runs</h2></div>
 <ol class="steps">
-<li>The ear rings its bell about 15-20 s after the first cracks; it is a confirmation, not the earliest signal. <strong>Mark FCs at the first distinct crack</strong> or at 363F BT, whichever comes first.</li>
-<li>Batch 1: start a stopwatch at FCs and press <strong>DROP at 2:30</strong> (that is 150 seconds, read the stopwatch as minutes:seconds).</li>
-<li>Batch 2: start a stopwatch at FCs and press <strong>DROP at 2:10</strong> (that is 130 seconds, read the stopwatch as minutes:seconds).</li>
-<li>Batch 3: start a stopwatch at FCs and press <strong>DROP at 2:50</strong> (that is 170 seconds, read the stopwatch as minutes:seconds).</li>
+<li><strong>You mark FCs</strong>, at the first distinct crack or at 363F BT, whichever comes first. The ear's bell is confirmation, about 18 s behind the first cracks; if it rings before you have marked, mark now. The 372F pop-up means you have missed it: mark at once.</li>
+<li>Batch 1: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:30</strong> (that is 150 seconds, read the stopwatch as minutes:seconds).</li>
+<li>Batch 2: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:10</strong> (that is 130 seconds, read the stopwatch as minutes:seconds).</li>
+<li>Batch 3: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:50</strong> (that is 170 seconds, read the stopwatch as minutes:seconds).</li>
 <li>Drop early if BT reaches 400F; the 398F alarm will do it for you.</li>
 <li>Watch for: Heat-soak/ambient: later batches or a warmer day pull FC 15-35 s earlier; trust the BT-triggered cuts, not the clock.</li>
 <li>Watch for: Drop BT should land near 380F — if FC BT runs high, the 150 s dev could push past Full City; shorten dev rather than let it darken.</li>
 <li>Watch for: Astringency: if it returns, the h80 cut is the lever to move earlier next revision.</li>
-<li>Watch for: FC declaration lag ~18 s from the ear detector; start the 150 s dev clock from the machine&#x27;s FCs mark, not the first audible crack.</li>
 </ol></section>
 <section>
 <div class="section-head"><div class="eyebrow">At the table</div><h2>Taste for difference, not for words</h2></div>
@@ -257,7 +262,7 @@ run_roast-analyzer analyze.py cupping &lt;batch&gt; --intake      # once per bat
 run_roast-analyzer analyze.py profile &quot;Rwanda Rusizi Gaseke&quot; --revise    # the next version from the cups
 run_roast-analyzer analyze.py export-alarms &quot;Rwanda Rusizi Gaseke&quot;      # its alarm set and sheet</pre>
 </section>
-<footer><span>Generated 2026-09-14 20:43 from profile v2, based on design </span>
+<footer><span>Generated 2026-09-18 06:55 from profile v2, based on design </span>
 <span>! f20: time trigger after TP; a BT trigger tracks the bean</span>
 <span>! h90: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
 <span>! h80: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
