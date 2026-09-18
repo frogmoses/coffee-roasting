@@ -7,9 +7,10 @@
 #   artisan/deploy.sh local  — install the repo copy into THIS machine's Artisan as a
 #                              development copy (paths rewritten, no roaster needed)
 #   artisan/deploy.sh push-alarms <bean-slug>
-#                            — copy beans/<slug>/alarms/*.alrm and the sheet to the
-#                              roaster (~/coffee-roasts/alarms/<slug>/); Artisan loads
-#                              a set via Config -> Alarms -> Load, so Artisan may run
+#                            — mirror beans/<slug>/alarms/*.alrm and the sheets to the
+#                              roaster (~/coffee-roasts/alarms/<slug>/), removing sets
+#                              the repo no longer has; Artisan loads a set via
+#                              Config -> Alarms -> Load, so Artisan may run
 #
 # Requires DEPLOY_SSH_HOST (an ~/.ssh/config alias such as "roaster" or
 # user@host), like ear/deploy.sh. ARTISAN_CONF_REMOTE overrides the remote
@@ -144,7 +145,10 @@ case "$MODE" in
         BEAN_DIR="$HERE/../beans/$SLUG"
         [[ -d "$BEAN_DIR/alarms" ]] || { red "No $BEAN_DIR/alarms; run analyze.py export-alarms first"; exit 1; }
         ssh "$REMOTE" "mkdir -p '$REMOTE_ALARMS/$SLUG'"
-        rsync -a --include='*.alrm' --include='sheet-v*.html' --exclude='*' \
+        # --delete removes a set or sheet the repo no longer has (a superseded
+        # export must not stay loadable on the roaster); the exclude keeps
+        # every other file in the remote directory untouched.
+        rsync -a --delete --include='*.alrm' --include='sheet-v*.html' --exclude='*' \
             "$BEAN_DIR/alarms/" "$BEAN_DIR/" "$REMOTE:$REMOTE_ALARMS/$SLUG/"
         green "Pushed beans/$SLUG alarms and sheets -> $REMOTE:~/$REMOTE_ALARMS/$SLUG/"
         ssh "$REMOTE" "ls -1 '$REMOTE_ALARMS/$SLUG/'"
