@@ -138,10 +138,12 @@ def test_validate_warns_on_lone_10_percent_step_and_missing_curve():
     sched["moves"][3]["value"] = 80
     sched["moves"][3]["trigger"] = {"bt": 278}      # ~47 s after the 262F cut
     res = rs.validate_schedule(sched, _envelope())
-    assert res["ok"] and any("10% step" in w for w in res["warnings"])
-    assert any("sees a ramp" in w for w in res["warnings"])
+    assert res["ok"] and any("single 10% heater step" in w for w in res["warnings"])
+    assert any("act like one gradual cut" in w for w in res["warnings"])
+    # warnings name moves the way the sheet does, never by their ids
+    assert any(w.startswith("Heater 80% at 278F:") for w in res["warnings"])
     res2 = rs.validate_schedule(_schedule(), {})
-    assert res2["ok"] and any("envelope" in w for w in res2["warnings"])
+    assert res2["ok"] and any("no measured roast curve" in w for w in res2["warnings"])
 
 
 def test_revision_bounds_limit_change_count_and_size():

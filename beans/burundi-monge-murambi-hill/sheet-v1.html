@@ -152,19 +152,19 @@
 <header>
 <div class="eyebrow">Roast day sheet</div>
 <h1>Burundi Monge Murambi Hill <small style="font-size:1rem;color:var(--ink-2)">profile v1</small></h1>
-<p>This Burundi is a dense, high-grown washed Bourbon — closely matched to the Rwanda Rusizi Gaseke that the envelope was measured on (same process, variety family, density, charge, warm-up), so the staircase transfers cleanly and the heater cuts are safe to keep as-is. The prior&#x27;s cupping verdicts put the balanced, preferred window at ~134-152s of development, with sourness below ~100s and roastiness past ~190s; the baseline&#x27;s 152s drop sits squarely in that window and suits a City+ target that preserves tea-like brightness and honey sweetness. Because first crack is uncertain by about a minute on a borrowed envelope, I changed nothing in the proven schedule for version 1 and instead put the uncertainty into the development bracket, so the first session resolves this bean&#x27;s own ideal dev time. <strong>Expect in the cup:</strong> A balanced cup (neither sour nor roasty), sweet from start to finish with cane-sugar and honey, tea-like brisk acidity and orange/citrus-rind brightness, syrupy body, and only mild astringency — the City+ window where this Burundi shows its brightness without going flat.</p>
+<p>This Burundi is a dense, high-grown washed Bourbon, close kin to the Rwanda Rusizi Gaseke: same process, same variety, same bean density, and the same charge and warm-up. So version 1 keeps the Rwanda schedule exactly: the same fan steps and the same four heater cuts at the same bean temperatures. On the Rwanda, development of about 2:15 to 2:30 after first crack tasted balanced and best; under about 1:40 it was sour, and past about 3:10 roasty. This plan&#x27;s 2:32 sits in that window and suits a City+ roast that keeps the tea-like brightness and honey sweetness. First crack can land up to a minute away from the prediction on a bean roasted here for the first time, so nothing else changes yet; the three batches test development instead, and this first session finds the Burundi&#x27;s own best development time. <strong>Expect in the cup:</strong> A balanced cup, neither sour nor roasty, sweet from start to finish with cane sugar and honey, brisk tea-like acidity with orange and citrus-rind brightness, syrupy body, and only mild astringency: the City+ roast where this Burundi shows its brightness without going flat.</p>
 <div class="meta">
-<span>Predicted FC <b>~10:33 at 361F</b> (borrowed)</span>
-<span>Measured FC <b>9:16 to 11:24</b> over 10 roasts</span>
+<span>Predicted FC <b>~10:33 at 361F</b> (estimated from your Rwanda Rusizi Gaseke roasts)</span>
+<span>Rwanda Rusizi Gaseke first crack <b>9:16 to 11:24</b> over 10 roasts</span>
 <span>Development <b>FC + 2:32</b>, drop ~381F</span>
 <span>Safety eject <b>408F</b></span>
 <span>Alarm set <b>profile-v1-bt.alrm</b></span>
-<span>Envelope borrowed from <b>Rwanda Rusizi Gaseke</b></span>
+<span>First roast of this bean: times come from your <b>Rwanda Rusizi Gaseke</b> roasts</span>
 </div></header>
 <section>
 <div class="section-head"><div class="eyebrow">Before the first charge</div><h2>Load the set, start the ear, let the warm-up run</h2></div>
 <ol class="steps">
-<li>Before Artisan opens on the roaster, the settings file must match the repo copy (event quantifiers off, the Control On button): <code>DEPLOY_SSH_HOST=roaster artisan/deploy.sh diff</code> prints nothing; if it does, <code>push</code> with Artisan closed, then start Artisan.</li>
+<li>Before Artisan opens on the roaster, its settings must match the copy kept on your dev machine (that copy has the Control On button and Artisan's quantifiers off): <code>DEPLOY_SSH_HOST=roaster artisan/deploy.sh diff</code> prints nothing; if it does, <code>push</code> with Artisan closed, then start Artisan.</li>
 <li>Check the microphone: <code>run_ear ear.py level</code> with the empty drum running. Peaks near -30 dBFS and no clipping; snap your fingers by the capsule and the cracks column climbs. Adjust the capture gain in <code>alsamixer -c 1</code> until it does.</li>
 <li>Start the ear on the roaster: <code>run_ear ear.py listen --bean "Burundi Monge Murambi Hill"</code>. One listen covers the day.</li>
 <li>Name the roast in Artisan (<strong>Burundi Monge Murambi Hill</strong>) before you press ON, so the batch groups with its bean.</li>
@@ -179,19 +179,19 @@
 <div class="section-head"><div class="eyebrow">Schedule</div><h2>Every batch, from charge to first crack</h2></div>
 <div class="tablewrap"><table><thead><tr><th>When</th><th class="num">Expect BT</th><th>Move</th><th>Trigger</th><th>Why</th></tr></thead><tbody>
 <tr><td>0:00</td><td class="num">300F</td><td>CHARGE at 300F, heater 100%, fan 0%</td><td><span class="tag coil">you</span></td><td></td></tr>
-<tr><td>0:15</td><td class="num">239F</td><td>Fan -&gt; 10% at CHARGE + 0:15</td><td><span class="tag coil">clock</span></td><td>Measured staircase: gentle early airflow for chaff while the bean falls to the turning point.</td></tr>
-<tr><td>1:30</td><td class="num">178F</td><td>Fan -&gt; 20% at CHARGE + 1:30</td><td><span class="tag coil">clock</span></td><td>Measured staircase: step airflow up just after the turning point to build convection without stalling the rise.</td></tr>
-<tr><td>4:20</td><td class="num">262F</td><td>Heater -&gt; 90% at BT 262F</td><td><span class="tag bean">bean temp</span></td><td>First easing of heat in the Maillard climb; BT-triggered so it lands correctly regardless of borrowed FC timing.</td></tr>
-<tr><td>5:11</td><td class="num">281F</td><td>Heater -&gt; 80% at BT 281F</td><td><span class="tag bean">bean temp</span></td><td>Continue the measured staircase to keep the rise controlled through the browning phase.</td></tr>
-<tr><td>6:38</td><td class="num">303F</td><td>Heater -&gt; 70% at BT 303F</td><td><span class="tag bean">bean temp</span></td><td>Measured staircase: ease rate of rise as DRY completes and Maillard lengthens.</td></tr>
-<tr><td>7:50</td><td class="num">321F</td><td>Heater -&gt; 60% at BT 321F</td><td><span class="tag bean">bean temp</span></td><td>Final cut to settle the rate of rise into first crack; stays at 60% so heat into FC remains &gt;=40%.</td></tr>
+<tr><td>0:15</td><td class="num">239F</td><td>Fan -&gt; 10% at CHARGE + 0:15</td><td><span class="tag coil">clock</span></td><td>Gentle airflow early, to clear chaff while the beans fall to the turning point.</td></tr>
+<tr><td>1:30</td><td class="num">178F</td><td>Fan -&gt; 20% at CHARGE + 1:30</td><td><span class="tag coil">clock</span></td><td>More airflow just after the turning point, for convection without stalling the climb.</td></tr>
+<tr><td>4:20</td><td class="num">262F</td><td>Heater -&gt; 90% at BT 262F</td><td><span class="tag bean">bean temp</span></td><td>First easing of heat as browning begins. It fires on bean temperature, so it lands right even if this bean runs earlier or later than the Rwanda did.</td></tr>
+<tr><td>5:11</td><td class="num">281F</td><td>Heater -&gt; 80% at BT 281F</td><td><span class="tag bean">bean temp</span></td><td>Keeps the climb steady through browning.</td></tr>
+<tr><td>6:38</td><td class="num">303F</td><td>Heater -&gt; 70% at BT 303F</td><td><span class="tag bean">bean temp</span></td><td>Eases the rate of rise as drying ends, so browning lasts longer.</td></tr>
+<tr><td>7:50</td><td class="num">321F</td><td>Heater -&gt; 60% at BT 321F</td><td><span class="tag bean">bean temp</span></td><td>Last cut, so the rate of rise settles into first crack; 60% still carries enough heat through the crack.</td></tr>
 <tr class="fc"><td>FC+2:32</td><td class="num">381F</td><td>DROP at FC + 2:32</td><td><span class="tag coil">clock</span></td><td></td></tr>
 </tbody></table></div>
-<p class="a" style="color: var(--ink-2)">Times are expected, from the measured curve; the heater cuts fire on bean temperature only, so every batch of the set gets the same cut at the same BT whatever the drum's heat-soak or the weather does to the clock. On a cool day everything simply comes later.</p>
+<p class="a" style="color: var(--ink-2)">Times are expected, from the measured curve; the heater cuts fire on bean temperature only, so every batch gets the same cut at the same BT however hot the drum still is from the last batch or whatever the weather does to the clock. On a cool day everything simply comes later.</p>
 </section>
 <section>
 <div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row</h2></div>
-<pre> 1. CHARGE BT &gt; 0F             -&gt; (marker, no action)
+<pre> 1. CHARGE BT &gt; 0F             -&gt; (no action: marks &#x27;roast started&#x27;)
  2. ON +0:01                   -&gt; Event Button 3 (Control On)  [unless #1]
  3. ON +0:03                   -&gt; Event Button 1,5,8 (Motor On, Door Close, Stirrer Off)  [unless #1]
  4. ON +0:05                   -&gt; Heater 100%  [unless #6]
@@ -201,7 +201,7 @@
  8. ON BT &lt; 300F               -&gt; Pop Up &#x27;CHARGE NOW (300F): heater 100, fan 0&#x27; *  [if #6, unless #1]
  9. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
 10. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
-11. CHARGE BT &lt; 252F or +0:45  -&gt; (marker, no action)
+11. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
 12. CHARGE +0:15               -&gt; Fan 10%
 13. CHARGE +1:30               -&gt; Fan 20%
 14. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #11]
@@ -209,20 +209,20 @@
 16. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #11]
 17. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #11]
 18. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
-19. CHARGE BT &gt; 350F           -&gt; (marker, no action)
+19. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
 20. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
 21. CHARGE BT &gt; 398F           -&gt; DROP *
 22. DROP +4:00                 -&gt; COOL END</pre>
 <p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
 </section>
 <section>
-<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>Design first, then the ends of the bracket</h2></div>
+<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>The planned development first, then a shorter and a longer one</h2></div>
 <div class="cards">
-<div class="card"><div class="eyebrow">Batch 1 &middot; design</div><div class="big">FC + 2:32 <small>152 s &middot; drop ~381F</small></div><div class="note">The designed development. Goes first, cold drum.</div></div>
-<div class="card"><div class="eyebrow">Batch 2 &middot; short</div><div class="big">FC + 2:00 <small>120 s &middot; drop ~376F</small></div><div class="note">Expect brighter, possibly sour or grassy: what under-developed tastes like on this bean.</div></div>
-<div class="card"><div class="eyebrow">Batch 3 &middot; long</div><div class="big">FC + 3:00 <small>180 s &middot; drop ~384F</small></div><div class="note">Expect roastier, heavier, less bright.</div></div>
+<div class="card"><div class="eyebrow">Batch 1 &middot; planned</div><div class="big">FC + 2:32 <small>152 s &middot; drop ~381F</small></div><div class="note">The planned development. Roasted first, while the drum is coldest.</div></div>
+<div class="card"><div class="eyebrow">Batch 2 &middot; shorter</div><div class="big">FC + 2:00 <small>120 s &middot; drop ~376F</small></div><div class="note">Expect brighter, possibly sour or grassy: what under-developed tastes like on this bean.</div></div>
+<div class="card"><div class="eyebrow">Batch 3 &middot; longer</div><div class="big">FC + 3:00 <small>180 s &middot; drop ~384F</small></div><div class="note">Expect roastier, heavier, less bright.</div></div>
 </div>
-<p class="a" style="color: var(--ink-2)">Changed by hand on 2026-11-01 from the designed 132/152/172: review item B9 (docs/review-2026-09-18.md) found 20 s steps inside the noise of a hand-marked first crack (+/-25 s on this machine). 120/152/180 keeps the operator&#x27;s 3:00 cap on the long arm, puts the short arm between the Rwanda&#x27;s sour 102 s and balanced 134 s, and keeps the designed 152 s as batch 1.</p>
+<p class="a" style="color: var(--ink-2)">The three batches change only the development time. 2:00, 2:32 and 3:00 are about 30 seconds apart, enough to taste even though a first-crack mark by ear can be 25 seconds off; the designer&#x27;s 2:12, 2:32 and 2:52 were too close to tell apart reliably. 3:00 keeps your cap on development, and 2:00 sits between the Rwanda&#x27;s sour 1:42 and its balanced 2:14.</p>
 </section>
 <section>
 <div class="section-head"><div class="eyebrow">First crack</div><h2>Mark it, then the timer runs</h2></div>
@@ -232,10 +232,10 @@
 <li>Batch 2: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:00</strong> (that is 120 seconds, read the stopwatch as minutes:seconds).</li>
 <li>Batch 3: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 3:00</strong> (that is 180 seconds, read the stopwatch as minutes:seconds).</li>
 <li>Drop early if BT reaches 400F; the 398F alarm will do it for you.</li>
-<li>Watch for: FC timing is borrowed and may drift up to ~a minute from the predicted 633s; trust the BT-triggered heater cuts and time the drop from the actual FCs mark, not the clock.</li>
-<li>Watch for: Turning point near 160-170F around 58s — confirm the rise re-establishes before the f20 airflow step.</li>
-<li>Watch for: Astringency: the prior history cleared it by moving the first heat cut earlier; if the cup comes in drying, pull h90 earlier next version.</li>
-<li>Watch for: Drop BT: projected ~381F at 152s dev leaves comfortable margin under the 398F cap and the 408F ejection point.</li>
+<li>Watch for: First crack may come up to about a minute either side of 10:33, because the times come from the Rwanda. The heater cuts follow bean temperature, so they still land right; time the drop from your FCs mark, not the clock.</li>
+<li>Watch for: The beans should bottom out near 160-170F about a minute after charge, and be climbing again before the fan step to 20% at 1:30.</li>
+<li>Watch for: Astringency: on the Rwanda it went away when the first heater cut came earlier. If this cup tastes drying, move the 262F cut earlier in the next version.</li>
+<li>Watch for: The 2:32 batch should drop near 381F, well under the 398F automatic drop and the 408F eject.</li>
 </ol></section>
 <section>
 <div class="section-head"><div class="eyebrow">At the table</div><h2>Taste for difference, not for words</h2></div>
@@ -243,7 +243,7 @@
 <li><strong>Rest 3 to 5 days</strong> before judging. At 24 hours every batch tastes flat and gassy in the Switch.</li>
 <li>Brew all batches in the Hario Switch the same way, back to back, cups labeled by batch number only. Recipe: <strong>15 g</strong> medium grind, <strong>250 g at 94°C</strong>, switch closed; pour 50 g and swirl at 0:00, fill to 250 g at 0:45, open the switch at 2:00, drained by about 3:00. Hot water throughout: no cool second pour, since that hides the roasty end of the scale.</li>
 <li>Taste each cup hot at about four minutes and again ten minutes later. Sourness, astringency, and whether sweetness holds all show up in the cooler cup.</li>
-<li><strong>Triangle first.</strong> Pour two cups of one batch and one of another, shuffle, and pick the odd one out. If you can, you have discrimination and only lack vocabulary. If you cannot, the bracket is too narrow, not your palate.</li>
+<li><strong>Triangle first.</strong> Pour two cups of one batch and one of another, shuffle, and pick the odd one out. If you can, you have discrimination and only lack vocabulary. If you cannot, the batches were too close together, not your palate at fault.</li>
 <li>Then taste in roasting order and answer the intake below for each. Preference is the signal. Naming why is optional.</li>
 </ol>
 <h3>Intake, one per batch</h3>
@@ -255,20 +255,17 @@
 <li><span class="box"></span><div>Compared with the previous batch?<div class="opts"><span>worse</span><span>same</span><span>better</span></div></div></li>
 <li><span class="box"></span><div>Would you happily drink it again?<div class="opts"><span>yes</span><span>it&#x27;s fine</span><span>no</span></div></div></li>
 </ul>
-<p class="a" style="color: var(--ink-2)">The design expects: A balanced cup (neither sour nor roasty), sweet from start to finish with cane-sugar and honey, tea-like brisk acidity and orange/citrus-rind brightness, syrupy body, and only mild astringency — the City+ window where this Burundi shows its brightness without going flat.. If the cup disagrees, that is the finding.</p>
+<p class="a" style="color: var(--ink-2)">This profile should taste like: A balanced cup, neither sour nor roasty, sweet from start to finish with cane sugar and honey, brisk tea-like acidity with orange and citrus-rind brightness, syrupy body, and only mild astringency: the City+ roast where this Burundi shows its brightness without going flat. If the cup disagrees, that is what we learn.</p>
 </section>
 <section>
 <div class="section-head"><div class="eyebrow">Afterward</div><h2>Feed it back</h2></div>
-<pre>run_roast-analyzer analyze.py full          # scan; each batch links to this profile and shows designed vs executed
+<pre>run_roast-analyzer analyze.py full          # read the logs; each batch shows the plan next to what the roast actually did
 run_roast-analyzer analyze.py cupping &lt;batch&gt; --intake      # once per batch, after resting
 run_roast-analyzer analyze.py profile &quot;Burundi Monge Murambi Hill&quot; --revise    # the next version from the cups
 run_roast-analyzer analyze.py export-alarms &quot;Burundi Monge Murambi Hill&quot;      # its alarm set and sheet</pre>
 </section>
-<footer><span>Generated 2026-11-01 15:09 from profile v1, based on design </span>
-<span>! f20: time trigger after TP; a BT trigger tracks the bean</span>
-<span>! h90: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
-<span>! h80: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
-<span>! h80: 51s after the previous heater move; under 60s the machine sees a ramp, not two cuts</span>
-<span>! h70: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
-<span>! h60: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
+<footer><span>Generated 2026-11-01 15:20 from profile v1</span>
+<span>Note: Fan 20% at 1:30: runs on the clock after the turning point; a bean-temperature trigger would follow the bean better</span>
+<span>Note: Heater 90% at 262F, Heater 80% at 281F, Heater 70% at 303F, Heater 60% at 321F: a single 10% heater step barely shows in the rate of rise for about 2 minutes</span>
+<span>Note: Heater 80% at 281F: comes 51 s after the previous heater cut; closer than 60 s apart, two cuts act like one gradual cut</span>
 </footer></div>

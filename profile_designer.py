@@ -156,6 +156,15 @@ When revising from cupping verdicts, change as little as the cup demands and \
 return an empty change list when the right move is to roast the same schedule \
 again.
 
+Plain language: the rationale, each move's why, the flavor hypothesis, the \
+contrast lever's why and the watch-for lines are printed on the operator's \
+roast-day sheet. Write them in ordinary roasting words. Never use this \
+system's internal terms there: not envelope, staircase, baseline, prior, \
+borrowed, bracket, arm, lever, verdict, TP, or move ids like h80 or f20. Say \
+"the Rwanda roasts" or "your earlier roasts", "the schedule", "the turning \
+point", "the heater cut at 281F", "the fan step at 1:30". Give times as \
+minutes:seconds, not seconds.
+
 """ + HOTTOP_CONTROLS + "\n" + HOTTOP_DYNAMICS + "\n" + OPERATOR_PREFS + "\n" + INTAKE_LEGEND
 )
 

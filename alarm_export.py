@@ -228,7 +228,7 @@ def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0
              string="FC imminent: listen, mark FCs at the first crack", beep=1,
              label=f"pop-up at {guards['fc_popup_bt']}F (FC imminent)"))
     fc_guard = add(_row(source=SRC_BT, cond=COND_GT, temperature=guards["fc_min_bt"],
-                        label=f"marker: FC possible (BT > {guards['fc_min_bt']}F)"))
+                        label=f"marker: first crack possible (BT > {guards['fc_min_bt']}F)"))
     add(_row(source=SRC_BT, cond=COND_GT, temperature=FC_NAG_BT, action=ACT_POPUP, beep=1,
              string="No FCs mark yet? Mark it NOW (the drop timer runs from it)",
              label=f"pop-up at {FC_NAG_BT}F (no FCs mark yet? mark it now)"))
@@ -345,7 +345,10 @@ def _what(r):
     if a == ACT_POPUP:
         return f"Pop Up '{r['string']}'"
     if a == ACT_NONE:
-        return "(marker, no action)"
+        # A marker row only records that something happened, for other
+        # rows' if/unless conditions; say what it marks
+        mark = (r.get("label") or "").split("marker:", 1)[-1].split("(")[0].strip()
+        return f"(no action: marks '{mark}')" if mark else "(no action)"
     return ALARM_ACTIONS.get(a, str(a))
 
 

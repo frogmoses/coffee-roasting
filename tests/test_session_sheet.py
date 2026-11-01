@@ -39,7 +39,7 @@ def _profile(exported=None):
 def test_batches_put_the_design_first_then_short_then_long():
     cards = ss.batches_from_profile(_profile(), _envelope())
     assert [(c["order"], c["label"], c["dev_s"]) for c in cards] == \
-           [(1, "design", 140), (2, "short", 110), (3, "long", 170)]
+           [(1, "planned", 140), (2, "shorter", 110), (3, "longer", 170)]
     assert cards[0]["drop_bt"] == round(362 + 8.0 * 140 / 60)
     assert all(c["margin"] > 10 for c in cards)
     # a profile without a lever still gets its own batch
@@ -62,11 +62,11 @@ def test_render_sheet_manual_drop_first_session(tmp_path, monkeypatch):
     assert "The alarms run the warm-up" in html and "370F" in html
     assert "Heater -&gt; 80% at BT 262F" in html and "bean temp" in html
     assert "Event Button 3 (Control On)" in html                  # the alarm table
-    assert "Batch 1 &middot; design" in html and "FC + 2:20" in html and "FC + 1:50" in html
+    assert "Batch 1 &middot; planned" in html and "FC + 2:20" in html and "FC + 1:50" in html
     assert "press <strong>DROP at 2:20</strong>" in html           # manual drop, mm:ss
     assert "Hario Switch" in html and "Triangle first" in html and "Would you happily drink it again?" in html
     assert "profile &quot;Rwanda Test&quot; --revise" in html          # escaped in the <pre>
-    assert "! a lone 10% step" in html
+    assert "Note: a lone 10% step" in html
     path = ss.write_sheet("rwanda-test", 2, html)
     assert path == tmp_path / "rwanda-test" / "sheet-v2.html" and path.read_text() == html
 
@@ -80,7 +80,7 @@ def test_render_sheet_timed_drop_and_no_alarms():
     assert "Warm up by hand" in html and "row by row" not in html
     env = dict(_envelope(), borrowed_from="Bolivia Caranavi")
     html = ss.render_sheet(prof, None, env, None)
-    assert "Envelope borrowed from <b>Bolivia Caranavi</b>" in html
+    assert "times come from your <b>Bolivia Caranavi</b> roasts" in html
 
 
 def test_fan_after_fc_bracket_cards_keep_dev_and_name_the_slider_move():
@@ -89,7 +89,7 @@ def test_fan_after_fc_bracket_cards_keep_dev_and_name_the_slider_move():
     base = ss._fan_into_fc(prof["schedule"])                         # the fixture's last pre-FC fan
     prof["contrast_lever"] = {"key": "fan_after_fc", "values": [base, 40, 30], "why": "airflow from FC"}
     cards = ss.batches_from_profile(prof, _envelope())
-    assert [c["label"] for c in cards] == ["design", "fan 40%", "fan 30%"]
+    assert [c["label"] for c in cards] == ["planned", "fan 40%", "fan 30%"]
     assert {c["dev_s"] for c in cards} == {140}                      # development held fixed
     assert cards[0]["manual_move"] is None and cards[0]["fan_after_fc"] == base
     assert cards[1]["manual_move"] == "at your FCs mark, move the fan slider to 40%"

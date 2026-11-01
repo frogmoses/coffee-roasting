@@ -77,7 +77,7 @@ def test_profile_design_saves_a_version_and_export_writes_the_sheet(tmp_path, mo
     sheet = tmp_path / "beans" / "rwanda-test" / "sheet-v1.html"
     assert "Sheet:" in out and sheet.exists()
     html = sheet.read_text()
-    assert "profile-v1.alrm" in html and "Batch 1 &middot; design" in html and "DROP at 2:20" in html
+    assert "profile-v1.alrm" in html and "Batch 1 &middot; planned" in html and "DROP at 2:20" in html
     # sheet command regenerates from the stored export settings
     sheet.unlink()
     analyze.cmd_sheet(_Args(bean="rwanda", version=None))

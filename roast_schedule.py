@@ -462,6 +462,19 @@ def diff_schedules(new, base):
     return changes
 
 
+def move_label(mv):
+    """A move named the way the sheet shows it: "Heater 80% at 281F",
+    "Fan 20% at 1:30". Warnings and errors use this rather than the move's
+    id (h80, f20), because they are printed for the operator too."""
+    trig = mv.get("trigger") or {}
+    what = f"{str(mv.get('action', '?')).capitalize()} {mv.get('value')}%"
+    if trigger_kind(trig) == "bt":
+        return f"{what} at {trig.get('bt')}F"
+    after = trig.get("after", "CHARGE")
+    when = fmt_mmss(trig.get("seconds") or 0)
+    return f"{what} at {when}" if after == "CHARGE" else f"{what} at {after} + {when}"
+
+
 def validate_schedule(schedule, envelope=None, prefs=None, baseline=None,
                       max_changes=REVISION_MAX_CHANGES):
     """Bound a schedule against the machine and the operator.
@@ -498,7 +511,7 @@ def validate_schedule(schedule, envelope=None, prefs=None, baseline=None,
             clamped.append(f"charge {key} {raw} -> {snapped}")
         charge[key] = snapped
     if (charge["heater"] != 100 or charge["fan"] != 0) and not charge.get("why"):
-        warnings.append("charge state is not heater 100 / fan 0 and gives no reason")
+        warnings.append("the charge is not heater 100% / fan 0% and the design gives no reason")
 
     # -- moves: shape, grid, expectations
     moves = sched.setdefault("moves", [])
@@ -533,16 +546,16 @@ def validate_schedule(schedule, envelope=None, prefs=None, baseline=None,
     if curve:
         unresolved = fill_expectations(sched, env)
         for name in unresolved:
-            warnings.append(f"{name}: expectation not on the envelope curve")
+            warnings.append(f"{name}: its expected time is off the measured roast curve")
     else:
-        warnings.append("no machine envelope curve: timing checks skipped")
+        warnings.append("no measured roast curve for this bean: timing checks skipped")
 
     # -- ordering, TP rule, heater spacing
     tp_time = env.get("tp_time") or 90.0
     times = [expected_seconds(mv, env) for mv in moves]
     prev = None
     for mv, t in zip(moves, times):
-        name = mv.get("id") or f"{mv['action']} {mv['value']}"
+        name = move_label(mv)
         kind = trigger_kind(mv["trigger"])
         if t is None:
             continue
@@ -550,13 +563,13 @@ def validate_schedule(schedule, envelope=None, prefs=None, baseline=None,
             errors.append(f"{name}: expected at {fmt_mmss(t)}, before the previous move")
         prev = t
         if t >= tp_time + TP_GUARD_S and kind == "time":
-            warnings.append(f"{name}: time trigger after TP; a BT trigger tracks the bean")
+            warnings.append(f"{name}: runs on the clock after the turning point; a bean-temperature trigger would follow the bean better")
 
     stats = env.get("fc_stats") or {}
     fc_bt_mean = stats.get("fc_bt_mean") or 0
     for mv in moves:
         if trigger_kind(mv["trigger"]) == "bt":
-            name = mv.get("id") or f"{mv['action']} {mv['value']}"
+            name = move_label(mv)
             bt = mv["trigger"]["bt"]
             if fc_bt_mean and bt >= fc_bt_mean - 5:
                 errors.append(f"{name}: BT trigger {bt}F is at or past first crack (~{fc_bt_mean:.0f}F)")
@@ -568,7 +581,7 @@ def validate_schedule(schedule, envelope=None, prefs=None, baseline=None,
     heater_level = charge["heater"]
     last_heater_t = None
     for mv, t in zip(moves, times):
-        name = mv.get("id") or f"{mv['action']} {mv['value']}"
+        name = move_label(mv)
         if mv["action"] == "fan":
             if mv["value"] > MAX_FAN:
                 errors.append(f"{name}: fan {mv['value']}% stalls the rise (max {MAX_FAN})")
@@ -579,14 +592,14 @@ def validate_schedule(schedule, envelope=None, prefs=None, baseline=None,
         elif step > MAX_HEATER_STEP:
             errors.append(f"{name}: heater step {step}% is more than {MAX_HEATER_STEP}")
         elif step == 10:
-            warnings.append(f"{name}: a lone 10% step is invisible in BT rate-of-rise for ~2 min")
+            warnings.append(f"{name}: a single 10% heater step barely shows in the rate of rise for about 2 minutes")
         if last_heater_t is not None and t is not None:
             gap = t - last_heater_t
             if gap < SIMULTANEOUS_S:
                 errors.append(f"{name}: {gap:.0f}s after the previous heater move; that is one move, not two")
             elif gap < MIN_HEATER_GAP_S:
-                warnings.append(f"{name}: {gap:.0f}s after the previous heater move; under "
-                                f"{MIN_HEATER_GAP_S}s the machine sees a ramp, not two cuts")
+                warnings.append(f"{name}: comes {gap:.0f} s after the previous heater cut; closer "
+                                f"than {MIN_HEATER_GAP_S} s apart, two cuts act like one gradual cut")
         if t is not None:
             last_heater_t = t
         heater_level = mv["value"]
@@ -613,7 +626,7 @@ def validate_schedule(schedule, envelope=None, prefs=None, baseline=None,
     if projected >= guards["bt_ceiling"]:
         errors.append(f"projected drop {projected:.0f}F reaches the {guards['bt_ceiling']}F ceiling")
     if post_fc:
-        warnings.append("post-FC moves change the rise the drop projection was measured on")
+        warnings.append("moves after first crack change the temperature rise the drop prediction is based on")
 
     # -- prediction sanity
     pred = sched.get("predicted") or {}

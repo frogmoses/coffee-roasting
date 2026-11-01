@@ -86,7 +86,7 @@ def test_paired_rows_encode_bt_with_time_fallback_and_guards():
     # FC helpers, post-FC, drop, ceiling, cool
     _, popup = _by_label(rows, "FC imminent")
     assert popup["temperature"] == 356 and popup["action"] == ae.ACT_POPUP and popup["beep"] == 1
-    i_fc, fc = _by_label(rows, "FC possible")
+    i_fc, fc = _by_label(rows, "first crack possible")
     assert fc["temperature"] == 350 and fc["action"] == ae.ACT_NONE
     _, fan40 = _by_label(rows, "fan 40% at FCs")
     assert fan40["from"] == ae.FROM_FCS and fan40["offset"] == 1 and fan40["guard"] == i_fc

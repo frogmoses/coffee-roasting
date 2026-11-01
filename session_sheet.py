@@ -203,7 +203,7 @@ def _fan_batches(profile, envelope, values):
     cards = []
     for i, v in enumerate(ordered, 1):
         if v == base:
-            label, note, move = "design", f"The designed roast: fan stays at {base}% through first crack. Goes first, cold drum.", None
+            label, note, move = "planned", f"The planned roast: fan stays at {base}% through first crack. Roasted first, while the drum is coldest.", None
         else:
             label = f"fan {v}%"
             move = f"at your FCs mark, move the fan slider to {v}%"
@@ -239,16 +239,42 @@ def batches_from_profile(profile, envelope):
         trial = dict(sched, drop={"after": "FCs", "seconds": v})
         drop_bt = project_drop_bt(trial, envelope)
         if v == dev:
-            label, note = "design", "The designed development. Goes first, cold drum."
+            label, note = "planned", "The planned development. Roasted first, while the drum is coldest."
         elif v < dev:
-            label, note = "short", "Expect brighter, possibly sour or grassy: what under-developed tastes like on this bean."
+            label, note = "shorter", "Expect brighter, possibly sour or grassy: what under-developed tastes like on this bean."
         else:
-            label, note = "long", "Expect roastier, heavier, less bright."
+            label, note = "longer", "Expect roastier, heavier, less bright."
         cards.append({"order": i, "dev_s": v, "label": label, "note": note,
                       "drop_bt": round(drop_bt), "margin": round(SAFETY_EJECT_BT - drop_bt)})
     if key != "dev_seconds" and lever.get("values"):
         cards = [dict(c, lever_note=f"{key}: {lever['values']}") for c in cards]
     return cards
+
+
+def _confidence_words(confidence, borrowed_from=""):
+    """The designer's confidence label in words for the header."""
+    if confidence == "borrowed":
+        return f"estimated from your {borrowed_from} roasts" if borrowed_from else "estimated from another bean"
+    if confidence == "measured":
+        return "from this bean's roasts"
+    if confidence == "guess":
+        return "a guess"
+    return confidence or ""
+
+
+def _grouped_warnings(warnings):
+    """Validator warnings with one line per kind: "Heater 90% at 262F, Heater
+    80% at 281F: a single 10% heater step ..." instead of one line per move."""
+    grouped, order = {}, []
+    for w in warnings:
+        who, sep, what = w.partition(": ")
+        key = what if sep else w
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        if sep:
+            grouped[key].append(who)
+    return [(", ".join(grouped[k]) + ": " + k) if grouped[k] else k for k in order]
 
 
 def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alarm_file=None):
@@ -277,6 +303,7 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     a(f"<title>{_e(bean)} v{_e(version)}</title>")
     a(FONTS)
     a(CSS)
+    borrowed_from = (envelope or {}).get("borrowed_from") or ""
     a('<div class="sheet">')
     # -- header
     a("<header>")
@@ -285,26 +312,28 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     hyp = profile.get("flavor_hypothesis") or ""
     rationale = profile.get("rationale") or ""
     if rationale or hyp:
-        a(f"<p>{_e(rationale)}" + (f" <strong>Expect in the cup:</strong> {_e(hyp)}" if hyp else "") + "</p>")
+        a(f"<p>{_e(rationale)}" + (f" <strong>Expect in the cup:</strong> {_e(hyp.rstrip('. '))}." if hyp else "") + "</p>")
     a('<div class="meta">')
     if fc_time:
         a(f"<span>Predicted FC <b>~{_e(fmt_mmss(fc_time))} at {_e(pred.get('fc_bt', '?'))}F</b>"
-          + (f" ({_e(pred.get('confidence'))})" if pred.get("confidence") else "") + "</span>")
+          + (f" ({_e(_confidence_words(pred.get('confidence'), borrowed_from))})" if pred.get("confidence") else "")
+          + "</span>")
     if stats.get("count"):
-        a(f"<span>Measured FC <b>{_e(fmt_mmss(stats['fc_time_min']))} to {_e(fmt_mmss(stats['fc_time_max']))}</b> over {stats['count']} roasts</span>")
+        whose = f"{borrowed_from} first crack" if borrowed_from else "First crack so far"
+        a(f"<span>{_e(whose)} <b>{_e(fmt_mmss(stats['fc_time_min']))} to {_e(fmt_mmss(stats['fc_time_max']))}</b> over {stats['count']} roasts</span>")
     a(f"<span>Development <b>FC + {_e(fmt_mmss(dev))}</b>, drop ~{_e(pred.get('drop_bt', '?'))}F</span>")
     a(f"<span>Safety eject <b>{SAFETY_EJECT_BT}F</b></span>")
     if alarm_file:
         a(f"<span>Alarm set <b>{_e(alarm_file)}</b></span>")
-    if (envelope or {}).get("borrowed_from"):
-        a(f"<span>Envelope borrowed from <b>{_e(envelope['borrowed_from'])}</b></span>")
+    if borrowed_from:
+        a(f"<span>First roast of this bean: times come from your <b>{_e(borrowed_from)}</b> roasts</span>")
     a("</div></header>")
 
     # -- before the first charge
     a("<section>")
     a('<div class="section-head"><div class="eyebrow">Before the first charge</div><h2>Load the set, start the ear, let the warm-up run</h2></div>')
     a('<ol class="steps">')
-    a("<li>Before Artisan opens on the roaster, the settings file must match the repo copy (event quantifiers off, the Control On button): "
+    a("<li>Before Artisan opens on the roaster, its settings must match the copy kept on your dev machine (that copy has the Control On button and Artisan's quantifiers off): "
       "<code>DEPLOY_SSH_HOST=roaster artisan/deploy.sh diff</code> prints nothing; if it does, <code>push</code> with Artisan closed, then start Artisan.</li>")
     a(f"<li>Check the microphone: <code>run_ear ear.py level</code> with the empty drum running. Peaks near -30 dBFS and no clipping; "
       "snap your fingers by the capsule and the cracks column climbs. Adjust the capture gain in <code>alsamixer -c 1</code> until it does.</li>")
@@ -350,7 +379,7 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
           "or at the fallback time if it lags. On a cool day the clock moves land early in BT and first crack comes later; that is the weather, not the plan.</p>")
     elif mode == "bt":
         a("<p class=\"a\" style=\"color: var(--ink-2)\">Times are expected, from the measured curve; the heater cuts fire on bean temperature only, "
-          "so every batch of the set gets the same cut at the same BT whatever the drum's heat-soak or the weather does to the clock. "
+          "so every batch gets the same cut at the same BT however hot the drum still is from the last batch or whatever the weather does to the clock. "
           "On a cool day everything simply comes later.</p>")
     else:
         a("<p class=\"a\" style=\"color: var(--ink-2)\">Every move fires on the clock from CHARGE; the BT column is what the measured curve expects. "
@@ -368,7 +397,7 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
 
     # -- batches
     a("<section>")
-    a('<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>Design first, then the ends of the bracket</h2></div>')
+    a('<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>The planned development first, then a shorter and a longer one</h2></div>')
     a('<div class="cards">')
     for c in batches:
         warn = ' warn' if c["margin"] < 10 else ""
@@ -398,7 +427,7 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         a("<li><strong>The ear marks FCs; keep your hands off the FCs button.</strong> The DROP row is timed from the ear's mark minus its "
           f"{latency:.0f} s latency, so a hand mark would shorten development by that much. The ear must be running with <code>--push-artisan</code>.</li>")
         a(f"<li>The DROP alarm fires <strong>{_e(fmt_mmss(dev))}</strong> of development after first crack. "
-          "For the short and long batches load the matching set or drop by hand at the card's time.</li>")
+          "For the shorter and longer batches load the matching set or drop by hand at the card's time.</li>")
         a("<li>If the 372F pop-up fires with no FCs mark, the ear missed it: mark FCs yourself and press DROP at the card's time minus "
           f"{latency:.0f} s on your stopwatch (the row will fire {latency:.0f} s early from your mark; beat it or accept it).</li>")
     for w in profile.get("watch_for") or []:
@@ -419,7 +448,7 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
       "Hot water throughout: no cool second pour, since that hides the roasty end of the scale.</li>")
     a("<li>Taste each cup hot at about four minutes and again ten minutes later. Sourness, astringency, and whether sweetness holds all show up in the cooler cup.</li>")
     a("<li><strong>Triangle first.</strong> Pour two cups of one batch and one of another, shuffle, and pick the odd one out. "
-      "If you can, you have discrimination and only lack vocabulary. If you cannot, the bracket is too narrow, not your palate.</li>")
+      "If you can, you have discrimination and only lack vocabulary. If you cannot, the batches were too close together, not your palate at fault.</li>")
     a("<li>Then taste in roasting order and answer the intake below for each. Preference is the signal. Naming why is optional.</li>")
     a("</ol>")
     a("<h3>Intake, one per batch</h3>")
@@ -433,23 +462,23 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         a('<li><span class="box"></span><div>' + _e(q) + '<div class="opts">' + "".join(f"<span>{_e(o)}</span>" for o in opts) + "</div></div></li>")
     a("</ul>")
     if hyp:
-        a(f"<p class=\"a\" style=\"color: var(--ink-2)\">The design expects: {_e(hyp)}. If the cup disagrees, that is the finding.</p>")
+        a(f"<p class=\"a\" style=\"color: var(--ink-2)\">This profile should taste like: {_e(hyp.rstrip('. '))}. If the cup disagrees, that is what we learn.</p>")
     a("</section>")
 
     # -- afterward
     a("<section>")
     a('<div class="section-head"><div class="eyebrow">Afterward</div><h2>Feed it back</h2></div>')
-    cmds = ["run_roast-analyzer analyze.py full          # scan; each batch links to this profile and shows designed vs executed"]
+    cmds = ["run_roast-analyzer analyze.py full          # read the logs; each batch shows the plan next to what the roast actually did"]
     cmds += [f"run_roast-analyzer analyze.py cupping <batch> --intake      # once per batch, after resting"]
     cmds += [f"run_roast-analyzer analyze.py profile \"{bean}\" --revise    # the next version from the cups",
              f"run_roast-analyzer analyze.py export-alarms \"{bean}\"      # its alarm set and sheet"]
     a("<pre>" + _e("\n".join(cmds)) + "</pre>")
     a("</section>")
     a(f"<footer><span>Generated {_e(datetime.now().strftime('%Y-%m-%d %H:%M'))} from profile v{_e(version)}"
-      + (f", based on {_e((profile.get('based_on') or {}).get('kind', ''))} {_e((profile.get('based_on') or {}).get('roast_id') or '')}" if profile.get("based_on") else "")
+      + (f", built from roast {_e(profile['based_on']['roast_id'])}" if (profile.get("based_on") or {}).get("roast_id") else "")
       + "</span>")
-    for w in (profile.get("validator") or {}).get("warnings") or []:
-        a(f"<span>! {_e(w)}</span>")
+    for w in _grouped_warnings((profile.get("validator") or {}).get("warnings") or []):
+        a(f"<span>Note: {_e(w)}</span>")
     a("</footer></div>")
     return "\n".join(out)
 
