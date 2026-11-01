@@ -48,7 +48,7 @@
     line-height: 1.5;
   }
   .sheet {
-    max-width: 46rem;
+    max-width: 62rem;
     margin: 0 auto;
     padding: 2.5rem 1.5rem 4rem;
   }
@@ -60,7 +60,7 @@
   h1 { font-size: 2.4rem; font-weight: 700; line-height: 1.05; letter-spacing: -0.01em; }
   h2 { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
   h3 { font-size: 1.05rem; font-weight: 700; }
-  p { margin: 0; max-width: 66ch; }
+  p { margin: 0; max-width: 92ch; }
   .eyebrow {
     font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
     font-size: 0.72rem;
@@ -89,10 +89,12 @@
   table {
     border-collapse: collapse;
     width: 100%;
-    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
-    font-size: 0.86rem;
+    font-size: 0.9rem;
     font-variant-numeric: tabular-nums;
   }
+  /* times and temperatures line up in mono; words read in the body font */
+  td:first-child, td.num { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
+  td.move { min-width: 13rem; }
   th, td { text-align: left; padding: 0.42rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
   th { font-weight: 500; color: var(--ink-2); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
   td.num, th.num { text-align: right; }
@@ -138,13 +140,43 @@
     font-family: "IBM Plex Mono", monospace;
     font-size: 0.84rem;
     overflow-x: auto;
+    white-space: pre-wrap;
   }
   footer { padding-top: 1.4rem; color: var(--ink-2); font-size: 0.85rem; display: grid; gap: 0.3rem; }
 
+  @page { size: letter; margin: 0.5in 0.55in; }
   @media print {
-    body { background: #fff; color: #000; font-size: 11pt; }
+    body { background: #fff; color: #000; font-size: 11pt; line-height: 1.4; }
     .sheet { max-width: none; padding: 0; }
-    section { break-inside: avoid; }
+    /* Sections flow across pages (a whole-section "avoid" left half of
+       every page blank); only the small pieces stay whole, and a heading
+       (eyebrow + title) never ends a page */
+    section { display: block; padding: 0.5rem 0; break-inside: auto; }
+    section > * + * { margin-top: 0.4rem; }
+    .section-head { display: block; break-inside: avoid; break-after: avoid; }
+    .section-head .eyebrow { break-after: avoid; }
+    li, tr, .card, pre, .checklist li { break-inside: avoid; }
+    td.move { min-width: 0; width: 27%; }
+    td.why { width: 47%; }
+    /* the alarm table is an appendix: its own last page, so pages before
+       it are the whole working sheet */
+    section.appendix { break-before: page; }
+    /* each intake question on one line with its answers */
+    .checklist .opts { display: inline; margin-left: 0.6rem; }
+    .checklist li > div { display: block; }
+    header { gap: 0.35rem; padding-bottom: 0.6rem; }
+    h1 { font-size: 22pt; }
+    h2 { font-size: 14pt; }
+    p { max-width: none; }
+    .steps { gap: 0.25rem; }
+    .checklist { gap: 0.2rem; }
+    th, td { padding: 0.22rem 0.5rem; }
+    .tablewrap { overflow: visible; }
+    pre { overflow: visible; font-size: 9.5pt; padding: 0.4rem 0.6rem; }
+    .cards { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+    .card { padding: 0.5rem 0.7rem; }
+    .card .big { font-size: 1.45rem; }
+    footer { padding-top: 0.6rem; font-size: 10pt; }
     a { color: inherit; text-decoration: none; }
   }
 </style>
@@ -168,7 +200,7 @@
 <li>Check the microphone: <code>run_ear ear.py level</code> with the empty drum running. Peaks near -30 dBFS and no clipping; snap your fingers by the capsule and the cracks column climbs. Adjust the capture gain in <code>alsamixer -c 1</code> until it does.</li>
 <li>Start the ear on the roaster: <code>run_ear ear.py listen --bean "Burundi Monge Murambi Hill"</code>. One listen covers the day.</li>
 <li>Name the roast in Artisan (<strong>Burundi Monge Murambi Hill</strong>) before you press ON, so the batch groups with its bean.</li>
-<li>Config &rarr; Alarms &rarr; Load <code>profile-v1-bt.alrm</code>. Check the table matches the list below.</li>
+<li>Config &rarr; Alarms &rarr; Load <code>profile-v1-bt.alrm</code>. Check it against the alarm table at the end of this sheet.</li>
 <li>ON. The first alarm row takes Hottop control (super-user comes with it) and starts the drum; the next closes the door, stops the stirrer, and sets heater 100% and fan 0%. <strong>Do not press CONTROL yourself, today or ever</strong>: releasing control turns the Hottop off.</li>
 <li>The alarms run the warm-up: heater 100% until BT reaches <strong>370F</strong>, then heater 0% and fan 100% until BT falls to <strong>300F</strong>, then fan 0% and heater 100% with a pop-up that says charge. Charge as soon as it does; write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>
 <li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack. If the timer is not running you have not pressed START and no alarm is watching: DROP and start over.</li>
@@ -178,42 +210,16 @@
 <section>
 <div class="section-head"><div class="eyebrow">Schedule</div><h2>Every batch, from charge to first crack</h2></div>
 <div class="tablewrap"><table><thead><tr><th>When</th><th class="num">Expect BT</th><th>Move</th><th>Trigger</th><th>Why</th></tr></thead><tbody>
-<tr><td>0:00</td><td class="num">300F</td><td>CHARGE at 300F, heater 100%, fan 0%</td><td><span class="tag coil">you</span></td><td></td></tr>
-<tr><td>0:15</td><td class="num">239F</td><td>Fan -&gt; 10% at CHARGE + 0:15</td><td><span class="tag coil">clock</span></td><td>Gentle airflow early, to clear chaff while the beans fall to the turning point.</td></tr>
-<tr><td>1:30</td><td class="num">178F</td><td>Fan -&gt; 20% at CHARGE + 1:30</td><td><span class="tag coil">clock</span></td><td>More airflow just after the turning point, for convection without stalling the climb.</td></tr>
-<tr><td>4:20</td><td class="num">262F</td><td>Heater -&gt; 90% at BT 262F</td><td><span class="tag bean">bean temp</span></td><td>First easing of heat as browning begins. It fires on bean temperature, so it lands right even if this bean runs earlier or later than the Rwanda did.</td></tr>
-<tr><td>5:11</td><td class="num">281F</td><td>Heater -&gt; 80% at BT 281F</td><td><span class="tag bean">bean temp</span></td><td>Keeps the climb steady through browning.</td></tr>
-<tr><td>6:38</td><td class="num">303F</td><td>Heater -&gt; 70% at BT 303F</td><td><span class="tag bean">bean temp</span></td><td>Eases the rate of rise as drying ends, so browning lasts longer.</td></tr>
-<tr><td>7:50</td><td class="num">321F</td><td>Heater -&gt; 60% at BT 321F</td><td><span class="tag bean">bean temp</span></td><td>Last cut, so the rate of rise settles into first crack; 60% still carries enough heat through the crack.</td></tr>
-<tr class="fc"><td>FC+2:32</td><td class="num">381F</td><td>DROP at FC + 2:32</td><td><span class="tag coil">clock</span></td><td></td></tr>
+<tr><td>0:00</td><td class="num">300F</td><td class="move">CHARGE at 300F, heater 100%, fan 0%</td><td><span class="tag coil">you</span></td><td class="why"></td></tr>
+<tr><td>0:15</td><td class="num">239F</td><td class="move">Fan -&gt; 10% at CHARGE + 0:15</td><td><span class="tag coil">clock</span></td><td class="why">Gentle airflow early, to clear chaff while the beans fall to the turning point.</td></tr>
+<tr><td>1:30</td><td class="num">178F</td><td class="move">Fan -&gt; 20% at CHARGE + 1:30</td><td><span class="tag coil">clock</span></td><td class="why">More airflow just after the turning point, for convection without stalling the climb.</td></tr>
+<tr><td>4:20</td><td class="num">262F</td><td class="move">Heater -&gt; 90% at BT 262F</td><td><span class="tag bean">bean temp</span></td><td class="why">First easing of heat as browning begins. It fires on bean temperature, so it lands right even if this bean runs earlier or later than the Rwanda did.</td></tr>
+<tr><td>5:11</td><td class="num">281F</td><td class="move">Heater -&gt; 80% at BT 281F</td><td><span class="tag bean">bean temp</span></td><td class="why">Keeps the climb steady through browning.</td></tr>
+<tr><td>6:38</td><td class="num">303F</td><td class="move">Heater -&gt; 70% at BT 303F</td><td><span class="tag bean">bean temp</span></td><td class="why">Eases the rate of rise as drying ends, so browning lasts longer.</td></tr>
+<tr><td>7:50</td><td class="num">321F</td><td class="move">Heater -&gt; 60% at BT 321F</td><td><span class="tag bean">bean temp</span></td><td class="why">Last cut, so the rate of rise settles into first crack; 60% still carries enough heat through the crack.</td></tr>
+<tr class="fc"><td>FC+2:32</td><td class="num">381F</td><td class="move">DROP at FC + 2:32</td><td><span class="tag coil">clock</span></td><td class="why"></td></tr>
 </tbody></table></div>
 <p class="a" style="color: var(--ink-2)">Times are expected, from the measured curve; the heater cuts fire on bean temperature only, so every batch gets the same cut at the same BT however hot the drum still is from the last batch or whatever the weather does to the clock. On a cool day everything simply comes later.</p>
-</section>
-<section>
-<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row</h2></div>
-<pre> 1. CHARGE BT &gt; 0F             -&gt; (no action: marks &#x27;roast started&#x27;)
- 2. ON +0:01                   -&gt; Event Button 3 (Control On)  [unless #1]
- 3. ON +0:03                   -&gt; Event Button 1,5,8 (Motor On, Door Close, Stirrer Off)  [unless #1]
- 4. ON +0:05                   -&gt; Heater 100%  [unless #6]
- 5. ON +0:05                   -&gt; Fan 0%  [unless #6]
- 6. ON BT &gt; 370F               -&gt; Heater 0% *  [unless #1]
- 7. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
- 8. ON BT &lt; 300F               -&gt; Pop Up &#x27;CHARGE NOW (300F): heater 100, fan 0&#x27; *  [if #6, unless #1]
- 9. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
-10. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
-11. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
-12. CHARGE +0:15               -&gt; Fan 10%
-13. CHARGE +1:30               -&gt; Fan 20%
-14. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #11]
-15. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #11]
-16. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #11]
-17. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #11]
-18. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
-19. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
-20. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
-21. CHARGE BT &gt; 398F           -&gt; DROP *
-22. DROP +4:00                 -&gt; COOL END</pre>
-<p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
 </section>
 <section>
 <div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>The planned development first, then a shorter and a longer one</h2></div>
@@ -264,7 +270,33 @@ run_roast-analyzer analyze.py cupping &lt;batch&gt; --intake      # once per bat
 run_roast-analyzer analyze.py profile &quot;Burundi Monge Murambi Hill&quot; --revise    # the next version from the cups
 run_roast-analyzer analyze.py export-alarms &quot;Burundi Monge Murambi Hill&quot;      # its alarm set and sheet</pre>
 </section>
-<footer><span>Generated 2026-11-01 15:20 from profile v1</span>
+<section class="appendix">
+<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row, to check what you loaded</h2></div>
+<pre> 1. CHARGE BT &gt; 0F             -&gt; (no action: marks &#x27;roast started&#x27;)
+ 2. ON +0:01                   -&gt; Event Button 3 (Control On)  [unless #1]
+ 3. ON +0:03                   -&gt; Event Button 1,5,8 (Motor On, Door Close, Stirrer Off)  [unless #1]
+ 4. ON +0:05                   -&gt; Heater 100%  [unless #6]
+ 5. ON +0:05                   -&gt; Fan 0%  [unless #6]
+ 6. ON BT &gt; 370F               -&gt; Heater 0% *  [unless #1]
+ 7. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
+ 8. ON BT &lt; 300F               -&gt; Pop Up &#x27;CHARGE NOW (300F): heater 100, fan 0&#x27; *  [if #6, unless #1]
+ 9. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
+10. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
+11. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
+12. CHARGE +0:15               -&gt; Fan 10%
+13. CHARGE +1:30               -&gt; Fan 20%
+14. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #11]
+15. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #11]
+16. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #11]
+17. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #11]
+18. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
+19. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
+20. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
+21. CHARGE BT &gt; 398F           -&gt; DROP *
+22. DROP +4:00                 -&gt; COOL END</pre>
+<p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
+</section>
+<footer><span>Generated 2026-11-01 15:27 from profile v1</span>
 <span>Note: Fan 20% at 1:30: runs on the clock after the turning point; a bean-temperature trigger would follow the bean better</span>
 <span>Note: Heater 90% at 262F, Heater 80% at 281F, Heater 70% at 303F, Heater 60% at 321F: a single 10% heater step barely shows in the rate of rise for about 2 minutes</span>
 <span>Note: Heater 80% at 281F: comes 51 s after the previous heater cut; closer than 60 s apart, two cuts act like one gradual cut</span>

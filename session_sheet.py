@@ -72,7 +72,7 @@ CSS = '''<style>
     line-height: 1.5;
   }
   .sheet {
-    max-width: 46rem;
+    max-width: 62rem;
     margin: 0 auto;
     padding: 2.5rem 1.5rem 4rem;
   }
@@ -84,7 +84,7 @@ CSS = '''<style>
   h1 { font-size: 2.4rem; font-weight: 700; line-height: 1.05; letter-spacing: -0.01em; }
   h2 { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
   h3 { font-size: 1.05rem; font-weight: 700; }
-  p { margin: 0; max-width: 66ch; }
+  p { margin: 0; max-width: 92ch; }
   .eyebrow {
     font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
     font-size: 0.72rem;
@@ -113,10 +113,12 @@ CSS = '''<style>
   table {
     border-collapse: collapse;
     width: 100%;
-    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
-    font-size: 0.86rem;
+    font-size: 0.9rem;
     font-variant-numeric: tabular-nums;
   }
+  /* times and temperatures line up in mono; words read in the body font */
+  td:first-child, td.num { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
+  td.move { min-width: 13rem; }
   th, td { text-align: left; padding: 0.42rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
   th { font-weight: 500; color: var(--ink-2); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
   td.num, th.num { text-align: right; }
@@ -162,13 +164,43 @@ CSS = '''<style>
     font-family: "IBM Plex Mono", monospace;
     font-size: 0.84rem;
     overflow-x: auto;
+    white-space: pre-wrap;
   }
   footer { padding-top: 1.4rem; color: var(--ink-2); font-size: 0.85rem; display: grid; gap: 0.3rem; }
 
+  @page { size: letter; margin: 0.5in 0.55in; }
   @media print {
-    body { background: #fff; color: #000; font-size: 11pt; }
+    body { background: #fff; color: #000; font-size: 11pt; line-height: 1.4; }
     .sheet { max-width: none; padding: 0; }
-    section { break-inside: avoid; }
+    /* Sections flow across pages (a whole-section "avoid" left half of
+       every page blank); only the small pieces stay whole, and a heading
+       (eyebrow + title) never ends a page */
+    section { display: block; padding: 0.5rem 0; break-inside: auto; }
+    section > * + * { margin-top: 0.4rem; }
+    .section-head { display: block; break-inside: avoid; break-after: avoid; }
+    .section-head .eyebrow { break-after: avoid; }
+    li, tr, .card, pre, .checklist li { break-inside: avoid; }
+    td.move { min-width: 0; width: 27%; }
+    td.why { width: 47%; }
+    /* the alarm table is an appendix: its own last page, so pages before
+       it are the whole working sheet */
+    section.appendix { break-before: page; }
+    /* each intake question on one line with its answers */
+    .checklist .opts { display: inline; margin-left: 0.6rem; }
+    .checklist li > div { display: block; }
+    header { gap: 0.35rem; padding-bottom: 0.6rem; }
+    h1 { font-size: 22pt; }
+    h2 { font-size: 14pt; }
+    p { max-width: none; }
+    .steps { gap: 0.25rem; }
+    .checklist { gap: 0.2rem; }
+    th, td { padding: 0.22rem 0.5rem; }
+    .tablewrap { overflow: visible; }
+    pre { overflow: visible; font-size: 9.5pt; padding: 0.4rem 0.6rem; }
+    .cards { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+    .card { padding: 0.5rem 0.7rem; }
+    .card .big { font-size: 1.45rem; }
+    footer { padding-top: 0.6rem; font-size: 10pt; }
     a { color: inherit; text-decoration: none; }
   }
 </style>'''
@@ -340,7 +372,7 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     a(f"<li>Start the ear on the roaster: <code>run_ear ear.py listen --bean \"{_e(bean)}\"</code>. One listen covers the day.</li>")
     a(f"<li>Name the roast in Artisan (<strong>{_e(bean)}</strong>) before you press ON, so the batch groups with its bean.</li>")
     if alarm_file:
-        a(f"<li>Config &rarr; Alarms &rarr; Load <code>{_e(alarm_file)}</code>. Check the table matches the list below.</li>")
+        a(f"<li>Config &rarr; Alarms &rarr; Load <code>{_e(alarm_file)}</code>. Check it against the alarm table at the end of this sheet.</li>")
     if has_warmup_rows:
         a("<li>ON. The first alarm row takes Hottop control (super-user comes with it) and starts the drum; the next closes the door, stops the stirrer, "
           "and sets heater 100% and fan 0%. <strong>Do not press CONTROL yourself, today or ever</strong>: releasing control turns the Hottop off.</li>")
@@ -371,8 +403,8 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         cls = ' class="fc"' if r["phase"] == "drop" else ""
         bt = f"{r['bt']:.0f}F" if r.get("bt") is not None else ""
         kind = {"bt": "bean temp", "time": "clock", "manual": "you"}.get(r["kind"], r["kind"])
-        a(f"<tr{cls}><td>{_e(r['when'])}</td><td class=\"num\">{_e(bt)}</td><td>{_e(r['text'])}</td>"
-          f"<td><span class=\"tag {'bean' if r['kind'] == 'bt' else 'coil'}\">{_e(kind)}</span></td><td>{_e(r.get('why', ''))}</td></tr>")
+        a(f"<tr{cls}><td>{_e(r['when'])}</td><td class=\"num\">{_e(bt)}</td><td class=\"move\">{_e(r['text'])}</td>"
+          f"<td><span class=\"tag {'bean' if r['kind'] == 'bt' else 'coil'}\">{_e(kind)}</span></td><td class=\"why\">{_e(r.get('why', ''))}</td></tr>")
     a("</tbody></table></div>")
     if mode == "paired":
         a("<p class=\"a\" style=\"color: var(--ink-2)\">Times are expected, from the measured curve; a bean-temp trigger fires when BT gets there, "
@@ -385,15 +417,6 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         a("<p class=\"a\" style=\"color: var(--ink-2)\">Every move fires on the clock from CHARGE; the BT column is what the measured curve expects. "
           "On a cool day the cuts land at a lower BT and first crack comes later; that is the weather, not the plan.</p>")
     a("</section>")
-
-    # -- what Artisan does on its own
-    if alarm_rows:
-        a("<section>")
-        a('<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row</h2></div>')
-        a("<pre>" + _e("\n".join(describe_rows(alarm_rows))) + "</pre>")
-        a("<p class=\"a\" style=\"color: var(--ink-2)\">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. "
-          "A row with both a BT and a time fires on whichever comes first.</p>")
-        a("</section>")
 
     # -- batches
     a("<section>")
@@ -474,6 +497,15 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
              f"run_roast-analyzer analyze.py export-alarms \"{bean}\"      # its alarm set and sheet"]
     a("<pre>" + _e("\n".join(cmds)) + "</pre>")
     a("</section>")
+    # -- what Artisan does on its own
+    if alarm_rows:
+        a('<section class="appendix">')
+        a('<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row, to check what you loaded</h2></div>')
+        a("<pre>" + _e("\n".join(describe_rows(alarm_rows))) + "</pre>")
+        a("<p class=\"a\" style=\"color: var(--ink-2)\">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. "
+          "A row with both a BT and a time fires on whichever comes first.</p>")
+        a("</section>")
+
     a(f"<footer><span>Generated {_e(datetime.now().strftime('%Y-%m-%d %H:%M'))} from profile v{_e(version)}"
       + (f", built from roast {_e(profile['based_on']['roast_id'])}" if (profile.get("based_on") or {}).get("roast_id") else "")
       + "</span>")
