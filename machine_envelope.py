@@ -127,16 +127,43 @@ def ear_latency(captures_dir=None):
     return round(median(lat), 1), len(lat)
 
 
+def corrected_dev(metrics):
+    """(development seconds measured from the true first crack, source).
+
+    `dev_phase_time` runs from the operator's FCs mark. When the ear (else
+    the curve check) says the mark was more than FC_MARK_TOLERANCE off
+    (`mark_suspect`), true development is dev - offset, since offset =
+    detected - mark (batch #21: dev 116 s, ear offset +49 s, so ~67 s).
+    Otherwise the mark stands. Returns (None, None) without a dev time.
+    """
+    dev = metrics.get("dev_phase_time") or None
+    if not dev:
+        return None, None
+    for key, source in (("fc_audio", "ear"), ("fc_check", "curve")):
+        check = metrics.get(key) or {}
+        if check.get("offset") is not None and check.get("mark_suspect"):
+            return dev - check["offset"], source
+    return dev, "mark"
+
+
 def _dev_history(entries):
-    """Development seconds and cupping verdict per roast, oldest first."""
+    """Development seconds and cupping verdict per roast, oldest first.
+
+    `dev_s` is the logged figure (from the FCs mark); `dev_s_corrected` is
+    measured from the true first crack where the mark was off (see
+    corrected_dev), and is the one to reason with.
+    """
     rows = []
     for e in entries:
         m = e.get("metrics", {})
         intake = e.get("cupping_intake") or {}
         notes = e.get("cupping_notes") or ""
+        dev_true, dev_source = corrected_dev(m)
         rows.append({
             "batch": e.get("batch_nr", 0), "date": e.get("roast_date", ""),
             "dev_s": m.get("dev_phase_time") or None,
+            "dev_s_corrected": dev_true, "dev_source": dev_source,
+            "mark_suspect": dev_source in ("ear", "curve"),
             "fc_bt": m.get("fc_bt") or None, "drop_bt": m.get("drop_bt") or None,
             "fc_time": m.get("fc_time") or None,
             "ambient_temp": m.get("ambient_temp") or None,

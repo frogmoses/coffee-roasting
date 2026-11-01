@@ -169,7 +169,13 @@ def _envelope_block(envelope):
     if env.get("borrowed_from"):
         note = (f"NOTE: this bean has no roasts here; the envelope is borrowed from "
                 f"{env['borrowed_from']} on the same machine (same charge and warm-up), "
-                f"so the staircase transfers but first crack is uncertain by about a minute.\n")
+                f"so the staircase transfers but first crack is uncertain by about a minute. "
+                f"dev_history and its cupping verdicts are {env['borrowed_from']}'s, not this "
+                f"bean's: use them as a prior from a different coffee, weighed by how alike "
+                f"the two beans are (process, variety, density), never as this bean's results.\n")
+    note += ("dev_history: dev_s runs from the operator's FCs mark; dev_s_corrected runs "
+             "from the true first crack (ear or curve) where the mark was off by more than "
+             "30 s (mark_suspect). Reason with dev_s_corrected.\n")
     keys = ("count", "source_roasts", "staircase", "charge_bt", "tp_bt", "tp_time", "dry_time",
             "fc_stats", "ror_at_fc", "heat_soak_shift", "ambient", "dev_history",
             "ear_latency_s", "ear_latency_n", "median_curve")
@@ -335,11 +341,12 @@ def _best_dev(envelope):
     """Development seconds of the best-cupped roast in the envelope, if any."""
     best, best_score = None, None
     for r in (envelope or {}).get("dev_history") or []:
-        if not r.get("dev_s") or not r.get("cupped"):
+        dev = r.get("dev_s_corrected") or r.get("dev_s")
+        if not dev or not r.get("cupped"):
             continue
         score = {"yes": 2, "meh": 1, "no": 0}.get(r.get("drink_again"), 0)
         score += {"better": 1, "same": 0, "worse": -1}.get(r.get("preference"), 0)
         score -= abs(r.get("balance") or 0) * 0.5
         if best_score is None or score > best_score:
-            best, best_score = r["dev_s"], score
+            best, best_score = dev, score
     return int(round(best)) if best else None
