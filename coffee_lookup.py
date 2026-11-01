@@ -168,6 +168,12 @@ def lookup_bean(bean_name, base_url=None):
         return None, f"find-coffee query failed: {e}"
 
 
+# find-coffee record keys that come from Sweet Maria's Specs table, Farm
+# Notes, and category tags
+SPEC_KEYS = ("process", "region", "cultivar", "arrival_date", "grade", "appearance",
+             "roast_recommendation", "origin", "drying_method", "farm_notes")
+
+
 def extract_bean_profile(coffee_data):
     """Extract fields relevant to roast analysis from API response.
 
@@ -215,8 +221,14 @@ def extract_bean_profile(coffee_data):
     sorted_flavors = sorted(flavor_scores.items(), key=lambda x: x[1], reverse=True)
     dominant_flavors = [(name, score) for name, score in sorted_flavors if score > 0][:3]
 
+    # Specs-table fields find-coffee stores since 2026-11-01 (absent on older
+    # servers and on purchases it has not backfilled yet: then {} and the
+    # dossier falls back to reading the product page itself)
+    specs = {key: coffee_data.get(key) for key in SPEC_KEYS if coffee_data.get(key)}
+
     return {
         "name": coffee_data.get("name", ""),
+        "specs": specs,
         "cupping_notes": coffee_data.get("cupping_notes", ""),
         "overall_score": coffee_data.get("score", 0),
         "chart_score": coffee_data.get("chart_score", 0),

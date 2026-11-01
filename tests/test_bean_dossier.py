@@ -127,3 +127,36 @@ def test_research_bean_stores_text_and_urls():
     assert "Supplier page" in content and "do not re-search" in content and "Rusizi" in content
     assert max_uses == bd.RESEARCH_MAX_SEARCHES
     assert bd.research_bean(doc, call=lambda s, c, max_uses=3: (None, "no API credentials")) == "no API credentials"
+
+
+def test_build_dossier_uses_find_coffee_specs_without_fetching(tmp_path, monkeypatch):
+    """A find-coffee record with the Specs table needs no page fetch."""
+    monkeypatch.setenv("ROAST_BEANS_DIR", str(tmp_path))
+    coffee = {"name": "Burundi Monge Murambi Hill", "url": "https://example.test/burundi",
+              "attributes": "Syrupy bodied. City to Full City.", "score": 88.7,
+              "cupping_notes": "Honey sweetness, cane sugar, orange essence.",
+              "process": "Wet Process (Washed)", "region": "Colline Murambi, Mutambu, Bujumbura",
+              "cultivar": "Bourbon", "arrival_date": "May 2026", "grade": "A1",
+              "appearance": ".2 d/300gr, 15-17 Screen", "roast_recommendation": "City to Full City",
+              "origin": "Africa/Burundi",
+              "farm_notes": "The station sits at 1700 meters and the farms reach 1900 meters."}
+
+    def no_fetch(url):
+        raise AssertionError("the page should not be fetched")
+
+    doc = bd.build_dossier("Burundi Monge Murambi Hill", coffee, fetcher=no_fetch)
+    assert doc["specs_source"] == "find-coffee" and not doc["page_fetched"]
+    assert doc["process"] == "Wet Process (Washed)" and doc["variety"] == "Bourbon"
+    assert doc["arrival"] == "May 2026" and doc["appearance"].startswith(".2 d/300gr")
+    assert doc["roast_range"] == {"min": "City", "max": "Full City"} and doc["target_level"] == "City+"
+    assert doc["altitude"] == "1700, 1900 m (from the page text)"
+    assert doc["page_excerpt"].startswith("Cupping Notes\nHoney") and "Farm Notes\n" in doc["page_excerpt"]
+    assert "Density and screen: .2 d/300gr" in bd.dossier_block(doc)
+
+
+def test_build_dossier_falls_back_to_the_page_without_specs(tmp_path, monkeypatch):
+    """An older find-coffee record (no specs) still gets them from the page."""
+    monkeypatch.setenv("ROAST_BEANS_DIR", str(tmp_path))
+    coffee = {"name": "Rwanda Rusizi Gaseke", "url": "https://example.test/gaseke", "attributes": ATTRIBUTES}
+    doc = bd.build_dossier("Rwanda Rusizi Gaseke", coffee, fetcher=lambda url: PAGE)
+    assert doc["specs_source"] == "page" and doc["page_fetched"] and doc["process"] == "Wet Process"

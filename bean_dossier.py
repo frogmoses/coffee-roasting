@@ -4,11 +4,13 @@ The profile designer needs more than the twelve flavor scores the analyzer
 already fetches from find-coffee: it needs the supplier's roast-level
 recommendation ("City to Full City+"), the process, the variety and
 altitude (density), and any roasting notes the supplier wrote. find-coffee
-stores the product URL and a blurb (`attributes`) that contains the roast
-range as free text; the Sweet Maria's product page has the rest. This
-module pulls both, optionally asks the model to research the coffee on the
-web, and stores the result as `beans/<slug>/dossier.json`, next to the
-bean's profile versions. Re-running appends a version note rather than
+stores the product URL, a blurb (`attributes`) with the roast range as free
+text, and (since 2026-11-01) the product page's Specs table and Farm Notes
+as named fields. When the record has them the page is not fetched; for an
+older record this module reads the Sweet Maria's page itself. It
+optionally asks the model to research the coffee on the web, and stores
+the result as `beans/<slug>/dossier.json`, next to the bean's profile
+versions. Re-running appends a version note rather than
 overwriting silently.
 
 `dossier_block` renders one text block for prompts. It accepts a dossier or
@@ -111,6 +113,46 @@ class _TextExtractor(HTMLParser):
         return "\n".join(ln for ln in lines if ln)
 
 
+def altitude_from_text(text):
+    """Altitudes stated in prose ("sits at 1500 meters ... reach 1800+"), or ''."""
+    uniq = []
+    for m in ALTITUDE_RE.finditer(text or ""):
+        hit = m.group(1).strip()
+        if hit not in uniq:
+            uniq.append(hit)
+    return ", ".join(uniq[:3]) + " m (from the page text)" if uniq else ""
+
+
+def fields_from_find_coffee(specs, cupping_notes=""):
+    """Dossier fields from find-coffee's stored Specs table and Farm Notes.
+
+    find-coffee reads the product page's Specs table into named fields, so
+    when a record carries them this repo does not need to fetch or parse the
+    page. Returns {} when the record has no specs.
+    """
+    if not specs or not specs.get("process"):
+        return {}
+    farm = specs.get("farm_notes") or ""
+    fields = {
+        "process": specs.get("process", ""),
+        "region": specs.get("region", ""),
+        "variety": specs.get("cultivar", ""),
+        "arrival": specs.get("arrival_date", ""),
+        "grade": specs.get("grade", ""),
+        "appearance": specs.get("appearance", ""),
+        "roast_notes": specs.get("roast_recommendation", ""),
+        "altitude": altitude_from_text(farm),
+    }
+    # The designer's excerpt: the same two sections the page parser kept
+    excerpt = []
+    if cupping_notes:
+        excerpt.append("Cupping Notes\n" + cupping_notes)
+    if farm:
+        excerpt.append("Farm Notes\n" + farm)
+    fields["page_excerpt"] = "\n\n".join(excerpt)[:PAGE_EXCERPT_CHARS]
+    return {k: v for k, v in fields.items() if v}
+
+
 def fetch_product_page(url, timeout=FETCH_TIMEOUT_S):
     """The page HTML, or None on any failure (network is optional here)."""
     if not url:
@@ -152,13 +194,9 @@ def parse_product_page(html):
             if key in fields:
                 break
     if not fields.get("altitude"):
-        hits = [m.group(1).strip() for m in ALTITUDE_RE.finditer(text)]
-        if hits:
-            uniq = []
-            for h in hits:
-                if h not in uniq:
-                    uniq.append(h)
-            fields["altitude"] = ", ".join(uniq[:3]) + " m (from the page text)"
+        altitude = altitude_from_text(text)
+        if altitude:
+            fields["altitude"] = altitude
     # An excerpt for the designer to read what the parser missed: from the
     # first "Cupping Notes"/"Roast" heading if present, else the top
     start = 0
@@ -200,17 +238,26 @@ def build_dossier(bean_name, coffee_data=None, fetch_page=True, fetcher=fetch_pr
         "roast_range": parse_roast_recommendation(attributes),
         "target_level": None,
         "process": "", "region": "", "variety": "", "altitude": "", "arrival": "", "grade": "",
+        "appearance": "",
         "roast_notes": "",
         "page_excerpt": "",
         "page_fetched": False,
+        "specs_source": "",          # "find-coffee", "page", or "" (none found)
         "research": None,
         "versions": [],
     }
-    if fetch_page and url:
+    stored = fields_from_find_coffee(profile.get("specs"), dossier["cupping_notes"])
+    if stored:
+        dossier.update(stored)
+        dossier["specs_source"] = "find-coffee"
+        dossier["roast_range"] = (parse_roast_recommendation(stored.get("roast_notes", ""))
+                                  or dossier["roast_range"])
+    elif fetch_page and url:
         html = fetcher(url)
         if html:
             fields = parse_product_page(html)
             dossier["page_fetched"] = True
+            dossier["specs_source"] = "page"
             for key, value in fields.items():
                 if value and not dossier.get(key):
                     dossier[key] = value
@@ -317,9 +364,11 @@ def research_bean(dossier, call=None):
     lines = [f"Coffee: {dossier.get('name')}"]
     if dossier.get("source_url"):
         lines.append(f"Supplier page: {dossier['source_url']}")
-    for key in ("process", "region", "variety", "altitude"):
+    for key, label in (("process", "Process"), ("region", "Region"), ("variety", "Variety"),
+                       ("altitude", "Altitude"), ("arrival", "Arrival"),
+                       ("appearance", "Density and screen")):
         if dossier.get(key):
-            lines.append(f"{key.capitalize()} (from the supplier page): {dossier[key]}")
+            lines.append(f"{label} (from the supplier page): {dossier[key]}")
     if dossier.get("attributes"):
         lines.append(f"Supplier blurb: {dossier['attributes'][:600]}")
     rr = dossier.get("roast_range")
@@ -358,7 +407,8 @@ def dossier_block(doc):
     if name:
         parts.append(f"Bean: {name}")
     for key, label in (("process", "Process"), ("region", "Region"), ("variety", "Variety"),
-                       ("altitude", "Altitude"), ("arrival", "Arrival"), ("grade", "Grade")):
+                       ("altitude", "Altitude"), ("arrival", "Arrival"), ("grade", "Grade"),
+                       ("appearance", "Density and screen")):
         if doc.get(key):
             parts.append(f"{label}: {doc[key]}")
     rr = doc.get("roast_range") or parse_roast_recommendation(doc.get("attributes") or "")

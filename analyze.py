@@ -634,7 +634,9 @@ def _dossier_for(title, slug, research=False, alias=None, fetch=True):
         stop_server()
         if alias:
             add_alias(doc, alias)
-        status = "built" + (" (page fetched)" if doc.get("page_fetched") else " (no page)")
+        source = doc.get("specs_source")
+        status = "built" + {"find-coffee": " (specs from find-coffee)",
+                            "page": " (page fetched)"}.get(source, " (no page)")
     else:
         status = "stored"
     if research:

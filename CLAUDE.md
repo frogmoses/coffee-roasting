@@ -408,9 +408,17 @@ with intake verdicts, `ear_latency_s` (median declared-minus-onset over the
 sidecars, default 18 s). `borrow_envelope` takes the most recent bean with
 >= 3 roasts for a new bean (`borrowed_from`); `envelope_for` chooses.
 
-**Dossier** (`bean_dossier.py`): find-coffee record + Sweet Maria's product
-page (stdlib HTML parser: process, region, variety, altitude, arrival, roast
-notes, a 6 KB excerpt) -> `beans/<slug>/dossier.json` with `roast_range`
+**Dossier** (`bean_dossier.py`): find-coffee record -> `beans/<slug>/dossier.json`.
+Since 2026-11-01 find-coffee stores the product page's Specs table and Farm
+Notes as named fields; `coffee_lookup.extract_bean_profile()` passes them
+through as `specs` (`SPEC_KEYS`) and `fields_from_find_coffee()` maps them
+(process, region, cultivar -> variety, arrival, grade, appearance = density
+and screen, roast notes, altitude from the Farm Notes prose via
+`altitude_from_text`, excerpt = cupping notes + farm notes), so no page is
+fetched (`specs_source: "find-coffee"`). A record without specs (an old
+server, or a purchase not yet backfilled) falls back to fetching the Sweet
+Maria's page and the stdlib HTML parser (`specs_source: "page"`). Either
+way the dossier carries `roast_range`
 (`parse_roast_recommendation`, e.g. "City to Full City+") and
 `target_level` (lower-middle of the range, capped at Full City). Optional
 `research_bean` uses `llm_client.research_call` (web search tool, plain text
@@ -792,8 +800,13 @@ Artisan's Roast Properties so `scan --force` keeps it.
 
 ## find-coffee Integration
 
+find-coffee (`~/CodeProjects/find-coffee`) owns everything about Sweet
+Maria's: the catalog, stock, purchases, and similarity. This repo reads it
+and never scrapes the catalog itself.
+
 - API: `GET /api/purchased_coffees?name=<search>` — case-insensitive LIKE match
-- Returns: cupping_notes, 12 flavor scores (floral, berry, citrus, honey, sugar, caramel, fruit, cocoa, nut, rustic, spice, body), 10 cupping chart scores (dry_fragrance, wet_aroma, brightness, flavor, body, finish, sweetness, clean_cup, complexity, uniformity)
+- Returns: cupping_notes, 12 flavor scores (floral, berry, citrus, honey, sugar, caramel, fruit, cocoa, nut, rustic, spice, body), 10 cupping chart scores (dry_fragrance, wet_aroma, brightness, flavor, body, finish, sweetness, clean_cup, complexity, uniformity), and the spec fields (origin, region, process, drying_method, arrival_date, cultivar, grade, appearance, roast_recommendation, farm_notes, ...)
+- Also available, not yet called from here: `GET /api/similar?name=<bean>&n=5` (in-stock matches for a purchase, even a sold-out one: notes + flavor chart + specs, with reasons) and `GET /api/coffees?name=&in_stock=1` (catalog records with specs). From a terminal: `run_find-coffee -m find_coffee.cli similar "<bean>" --refresh` when a bean runs out
 - `coffee_lookup.py` checks if find-coffee is running, starts it via `FIND_COFFEE_WRAPPER` if not (on the port parsed from `FIND_COFFEE_URL`, default 5000), queries, then kills the process (only if we started it)
 - Fallback search: if no results, retries with first 2 words of the bean name (`coffee_lookup.py`)
 - Env vars (all required for bean lookup to work, no defaults):
