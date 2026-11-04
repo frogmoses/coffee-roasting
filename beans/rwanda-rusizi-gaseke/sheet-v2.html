@@ -48,7 +48,7 @@
     line-height: 1.5;
   }
   .sheet {
-    max-width: 46rem;
+    max-width: 62rem;
     margin: 0 auto;
     padding: 2.5rem 1.5rem 4rem;
   }
@@ -60,7 +60,7 @@
   h1 { font-size: 2.4rem; font-weight: 700; line-height: 1.05; letter-spacing: -0.01em; }
   h2 { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
   h3 { font-size: 1.05rem; font-weight: 700; }
-  p { margin: 0; max-width: 66ch; }
+  p { margin: 0; max-width: 92ch; }
   .eyebrow {
     font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
     font-size: 0.72rem;
@@ -89,10 +89,12 @@
   table {
     border-collapse: collapse;
     width: 100%;
-    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
-    font-size: 0.86rem;
+    font-size: 0.9rem;
     font-variant-numeric: tabular-nums;
   }
+  /* times and temperatures line up in mono; words read in the body font */
+  td:first-child, td.num { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
+  td.move { min-width: 13rem; }
   th, td { text-align: left; padding: 0.42rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
   th { font-weight: 500; color: var(--ink-2); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
   td.num, th.num { text-align: right; }
@@ -138,13 +140,43 @@
     font-family: "IBM Plex Mono", monospace;
     font-size: 0.84rem;
     overflow-x: auto;
+    white-space: pre-wrap;
   }
   footer { padding-top: 1.4rem; color: var(--ink-2); font-size: 0.85rem; display: grid; gap: 0.3rem; }
 
+  @page { size: letter; margin: 0.5in 0.55in; }
   @media print {
-    body { background: #fff; color: #000; font-size: 11pt; }
+    body { background: #fff; color: #000; font-size: 11pt; line-height: 1.4; }
     .sheet { max-width: none; padding: 0; }
-    section { break-inside: avoid; }
+    /* Sections flow across pages (a whole-section "avoid" left half of
+       every page blank); only the small pieces stay whole, and a heading
+       (eyebrow + title) never ends a page */
+    section { display: block; padding: 0.5rem 0; break-inside: auto; }
+    section > * + * { margin-top: 0.4rem; }
+    .section-head { display: block; break-inside: avoid; break-after: avoid; }
+    .section-head .eyebrow { break-after: avoid; }
+    li, tr, .card, pre, .checklist li { break-inside: avoid; }
+    td.move { min-width: 0; width: 27%; }
+    td.why { width: 47%; }
+    /* the alarm table is an appendix: its own last page, so pages before
+       it are the whole working sheet */
+    section.appendix { break-before: page; }
+    /* each intake question on one line with its answers */
+    .checklist .opts { display: inline; margin-left: 0.6rem; }
+    .checklist li > div { display: block; }
+    header { gap: 0.35rem; padding-bottom: 0.6rem; }
+    h1 { font-size: 22pt; }
+    h2 { font-size: 14pt; }
+    p { max-width: none; }
+    .steps { gap: 0.25rem; }
+    .checklist { gap: 0.2rem; }
+    th, td { padding: 0.22rem 0.5rem; }
+    .tablewrap { overflow: visible; }
+    pre { overflow: visible; font-size: 9.5pt; padding: 0.4rem 0.6rem; }
+    .cards { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+    .card { padding: 0.5rem 0.7rem; }
+    .card .big { font-size: 1.45rem; }
+    footer { padding-top: 0.6rem; font-size: 10pt; }
     a { color: inherit; text-decoration: none; }
   }
 </style>
@@ -154,8 +186,8 @@
 <h1>Rwanda Rusizi Gaseke <small style="font-size:1rem;color:var(--ink-2)">profile v2</small></h1>
 <p>The staircase is proven and I keep it untouched — it delivers balanced, low-astringency roasts at a controlled rate into FC. The only cup-argued lever is development: the sour/thin batches were all short (70-116 s), the one balanced batch was 134 s, and the roaster still didn&#x27;t &#x27;drink again&#x27; because sweetness and body were low. Nudging development to 150 s (well under the 180 s cap, drop ~380F under the 398F ceiling) should lift sweetness and body without darkening past Full City. The session brackets dev at 130/150/170 so the roaster can pin the sweet spot in one contrast. <strong>Expect in the cup:</strong> A balanced cup (needle off sour) with the raw-sugar/turbinado sweetness lifted above batch 23&#x27;s faint 1 and a fuller body, low astringency, milk-chocolate finish with bright fruit flashes retained.</p>
 <div class="meta">
-<span>Predicted FC <b>~10:50 at 360F</b> (measured)</span>
-<span>Measured FC <b>9:16 to 11:24</b> over 10 roasts</span>
+<span>Predicted FC <b>~10:50 at 360F</b> (from this bean&#x27;s roasts)</span>
+<span>First crack so far <b>9:16 to 11:44</b> over 11 roasts</span>
 <span>Development <b>FC + 2:30</b>, drop ~380F</span>
 <span>Safety eject <b>408F</b></span>
 <span>Alarm set <b>profile-v2-bt.alrm</b></span>
@@ -163,13 +195,13 @@
 <section>
 <div class="section-head"><div class="eyebrow">Before the first charge</div><h2>Load the set, start the ear, let the warm-up run</h2></div>
 <ol class="steps">
-<li>Before Artisan opens on the roaster, the settings file must match the repo copy (event quantifiers off, the Control On button): <code>DEPLOY_SSH_HOST=roaster artisan/deploy.sh diff</code> prints nothing; if it does, <code>push</code> with Artisan closed, then start Artisan.</li>
+<li>Before Artisan opens on the roaster, its settings must match the copy kept on your dev machine (that copy has the Control On button and Artisan's quantifiers off): <code>DEPLOY_SSH_HOST=roaster artisan/deploy.sh diff</code> prints nothing; if it does, <code>push</code> with Artisan closed, then start Artisan.</li>
 <li>Check the microphone: <code>run_ear ear.py level</code> with the empty drum running. Peaks near -30 dBFS and no clipping; snap your fingers by the capsule and the cracks column climbs. Adjust the capture gain in <code>alsamixer -c 1</code> until it does.</li>
 <li>Start the ear on the roaster: <code>run_ear ear.py listen --bean "Rwanda Rusizi Gaseke"</code>. One listen covers the day.</li>
 <li>Name the roast in Artisan (<strong>Rwanda Rusizi Gaseke</strong>) before you press ON, so the batch groups with its bean.</li>
-<li>Config &rarr; Alarms &rarr; Load <code>profile-v2-bt.alrm</code>. Check the table matches the list below.</li>
+<li>Config &rarr; Alarms &rarr; Load <code>profile-v2-bt.alrm</code>. Check it against the alarm table at the end of this sheet.</li>
 <li>ON. The first alarm row takes Hottop control (super-user comes with it) and starts the drum; the next closes the door, stops the stirrer, and sets heater 100% and fan 0%. <strong>Do not press CONTROL yourself, today or ever</strong>: releasing control turns the Hottop off.</li>
-<li>The alarms run the warm-up: heater 100% until BT reaches <strong>370F</strong>, then heater 0% and fan 100% until BT falls to <strong>300F</strong>, then fan 0% and heater 100% with a pop-up that says charge. Charge as soon as it does; write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>
+<li>The alarms run the warm-up: heater 100% until BT reaches <strong>370F</strong>, then heater 0% and fan 100% until BT falls to <strong>300F</strong>, then fan 0% and heater 100%. BT keeps falling for a minute or more, then climbs back. <strong>Charge at the pop-up</strong>, when BT climbs back through 300F, about 2 to 3 minutes after the heater came back on. If no pop-up appears, charge when BT climbs back through 300F. Write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>
 <li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack. If the timer is not running you have not pressed START and no alarm is watching: DROP and start over.</li>
 <li><strong>DROP is the panic button.</strong> Never OFF during a roast: with recording off no alarm evaluates, the 398F drop included, and the heater stays where it was.</li>
 <li>Between batches, in this order: DROP; <strong>COOL END</strong> (always, before OFF: it closes the door and stops the drum, fan, and stirrer; after OFF nothing will); OFF; <strong>save the log</strong> (the ear waits for that save before it can start the next batch's session); then ON. The warm-up repeats on its own.</li>
@@ -177,47 +209,21 @@
 <section>
 <div class="section-head"><div class="eyebrow">Schedule</div><h2>Every batch, from charge to first crack</h2></div>
 <div class="tablewrap"><table><thead><tr><th>When</th><th class="num">Expect BT</th><th>Move</th><th>Trigger</th><th>Why</th></tr></thead><tbody>
-<tr><td>0:00</td><td class="num">300F</td><td>CHARGE at 300F, heater 100%, fan 0%</td><td><span class="tag coil">you</span></td><td></td></tr>
-<tr><td>0:15</td><td class="num">239F</td><td>Fan -&gt; 10% at CHARGE + 0:15</td><td><span class="tag coil">clock</span></td><td>Measured staircase: gentle airflow for chaff without stalling the early rise.</td></tr>
-<tr><td>1:30</td><td class="num">178F</td><td>Fan -&gt; 20% at CHARGE + 1:30</td><td><span class="tag coil">clock</span></td><td>Measured staircase: a touch more convection through drying.</td></tr>
-<tr><td>4:20</td><td class="num">262F</td><td>Heater -&gt; 90% at BT 262F</td><td><span class="tag bean">bean temp</span></td><td>Measured staircase first ease-down; keeps the Maillard climb controlled.</td></tr>
-<tr><td>5:11</td><td class="num">281F</td><td>Heater -&gt; 80% at BT 281F</td><td><span class="tag bean">bean temp</span></td><td>Measured staircase; early enough to keep astringency down as this operator&#x27;s history shows.</td></tr>
-<tr><td>6:38</td><td class="num">303F</td><td>Heater -&gt; 70% at BT 303F</td><td><span class="tag bean">bean temp</span></td><td>Measured staircase; steadies rate of rise heading toward FC.</td></tr>
-<tr><td>7:50</td><td class="num">321F</td><td>Heater -&gt; 60% at BT 321F</td><td><span class="tag bean">bean temp</span></td><td>Measured staircase; holds 60% into and through FC for the linear ~7.9 F/min post-FC rise, staying at/above the 40% floor.</td></tr>
-<tr class="fc"><td>FC+2:30</td><td class="num">380F</td><td>DROP at FC + 2:30</td><td><span class="tag coil">clock</span></td><td></td></tr>
+<tr><td>0:00</td><td class="num">300F</td><td class="move">CHARGE at 300F, heater 100%, fan 0%</td><td><span class="tag coil">you</span></td><td class="why"></td></tr>
+<tr><td>0:15</td><td class="num">239F</td><td class="move">Fan -&gt; 10% at CHARGE + 0:15</td><td><span class="tag coil">clock</span></td><td class="why">Measured staircase: gentle airflow for chaff without stalling the early rise.</td></tr>
+<tr><td>1:30</td><td class="num">178F</td><td class="move">Fan -&gt; 20% at CHARGE + 1:30</td><td><span class="tag coil">clock</span></td><td class="why">Measured staircase: a touch more convection through drying.</td></tr>
+<tr><td>4:20</td><td class="num">262F</td><td class="move">Heater -&gt; 90% at BT 262F</td><td><span class="tag bean">bean temp</span></td><td class="why">Measured staircase first ease-down; keeps the Maillard climb controlled.</td></tr>
+<tr><td>5:11</td><td class="num">281F</td><td class="move">Heater -&gt; 80% at BT 281F</td><td><span class="tag bean">bean temp</span></td><td class="why">Measured staircase; early enough to keep astringency down as this operator&#x27;s history shows.</td></tr>
+<tr><td>6:38</td><td class="num">303F</td><td class="move">Heater -&gt; 70% at BT 303F</td><td><span class="tag bean">bean temp</span></td><td class="why">Measured staircase; steadies rate of rise heading toward FC.</td></tr>
+<tr><td>7:50</td><td class="num">321F</td><td class="move">Heater -&gt; 60% at BT 321F</td><td><span class="tag bean">bean temp</span></td><td class="why">Measured staircase; holds 60% into and through FC for the linear ~7.9 F/min post-FC rise, staying at/above the 40% floor.</td></tr>
+<tr class="fc"><td>FC+2:30</td><td class="num">380F</td><td class="move">DROP at FC + 2:30</td><td><span class="tag coil">clock</span></td><td class="why"></td></tr>
 </tbody></table></div>
-<p class="a" style="color: var(--ink-2)">Times are expected, from the measured curve; the heater cuts fire on bean temperature only, so every batch of the set gets the same cut at the same BT whatever the drum's heat-soak or the weather does to the clock. On a cool day everything simply comes later.</p>
+<p class="a" style="color: var(--ink-2)">Times are expected, from the measured curve; the heater cuts fire on bean temperature only, so every batch gets the same cut at the same BT however hot the drum still is from the last batch or whatever the weather does to the clock. On a cool day everything simply comes later.</p>
 </section>
 <section>
-<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row</h2></div>
-<pre> 1. CHARGE BT &gt; 0F             -&gt; (marker, no action)
- 2. ON +0:01                   -&gt; Event Button 3 (Control On)  [unless #1]
- 3. ON +0:03                   -&gt; Event Button 1,5,8 (Motor On, Door Close, Stirrer Off)  [unless #1]
- 4. ON +0:05                   -&gt; Heater 100%  [unless #6]
- 5. ON +0:05                   -&gt; Fan 0%  [unless #6]
- 6. ON BT &gt; 370F               -&gt; Heater 0% *  [unless #1]
- 7. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
- 8. ON BT &lt; 300F               -&gt; Pop Up &#x27;CHARGE NOW (300F): heater 100, fan 0&#x27; *  [if #6, unless #1]
- 9. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
-10. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
-11. CHARGE BT &lt; 252F or +0:45  -&gt; (marker, no action)
-12. CHARGE +0:15               -&gt; Fan 10%
-13. CHARGE +1:30               -&gt; Fan 20%
-14. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #11]
-15. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #11]
-16. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #11]
-17. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #11]
-18. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
-19. CHARGE BT &gt; 350F           -&gt; (marker, no action)
-20. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
-21. CHARGE BT &gt; 398F           -&gt; DROP *
-22. DROP +4:00                 -&gt; COOL END</pre>
-<p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
-</section>
-<section>
-<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>Design first, then the ends of the bracket</h2></div>
+<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>The planned development first, then a shorter and a longer one</h2></div>
 <div class="cards">
-<div class="card"><div class="eyebrow">Batch 1 &middot; design</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="note">The designed roast: fan stays at 20% through first crack. Goes first, cold drum.</div></div>
+<div class="card"><div class="eyebrow">Batch 1 &middot; planned</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="note">The planned roast: fan stays at 20% through first crack. Roasted first, while the drum is coldest.</div></div>
 <div class="card"><div class="eyebrow">Batch 2 &middot; fan 40%</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="big" style="font-size:1.1rem">At FCs: fan &rarr; 40%</div><div class="note">Fan 40% from first crack: more airflow through development, a slightly slower rise, chaff and smoke cleared. Expect the finish cleaner or flatter; the cup decides.</div></div>
 <div class="card"><div class="eyebrow">Batch 3 &middot; fan 30%</div><div class="big">FC + 2:30 <small>150 s &middot; drop ~380F</small></div><div class="big" style="font-size:1.1rem">At FCs: fan &rarr; 30%</div><div class="note">Fan 30% from first crack: more airflow through development, a slightly slower rise, chaff and smoke cleared. Expect the finish cleaner or flatter; the cup decides.</div></div>
 </div>
@@ -241,7 +247,7 @@
 <li><strong>Rest 3 to 5 days</strong> before judging. At 24 hours every batch tastes flat and gassy in the Switch.</li>
 <li>Brew all batches in the Hario Switch the same way, back to back, cups labeled by batch number only. Recipe: <strong>15 g</strong> medium grind, <strong>250 g at 94°C</strong>, switch closed; pour 50 g and swirl at 0:00, fill to 250 g at 0:45, open the switch at 2:00, drained by about 3:00. Hot water throughout: no cool second pour, since that hides the roasty end of the scale.</li>
 <li>Taste each cup hot at about four minutes and again ten minutes later. Sourness, astringency, and whether sweetness holds all show up in the cooler cup.</li>
-<li><strong>Triangle first.</strong> Pour two cups of one batch and one of another, shuffle, and pick the odd one out. If you can, you have discrimination and only lack vocabulary. If you cannot, the bracket is too narrow, not your palate.</li>
+<li><strong>Triangle first.</strong> Pour two cups of one batch and one of another, shuffle, and pick the odd one out. If you can, you have discrimination and only lack vocabulary. If you cannot, the batches were too close together, not your palate at fault.</li>
 <li>Then taste in roasting order and answer the intake below for each. Preference is the signal. Naming why is optional.</li>
 </ol>
 <h3>Intake, one per batch</h3>
@@ -253,20 +259,44 @@
 <li><span class="box"></span><div>Compared with the previous batch?<div class="opts"><span>worse</span><span>same</span><span>better</span></div></div></li>
 <li><span class="box"></span><div>Would you happily drink it again?<div class="opts"><span>yes</span><span>it&#x27;s fine</span><span>no</span></div></div></li>
 </ul>
-<p class="a" style="color: var(--ink-2)">The design expects: A balanced cup (needle off sour) with the raw-sugar/turbinado sweetness lifted above batch 23&#x27;s faint 1 and a fuller body, low astringency, milk-chocolate finish with bright fruit flashes retained.. If the cup disagrees, that is the finding.</p>
+<p class="a" style="color: var(--ink-2)">This profile should taste like: A balanced cup (needle off sour) with the raw-sugar/turbinado sweetness lifted above batch 23&#x27;s faint 1 and a fuller body, low astringency, milk-chocolate finish with bright fruit flashes retained. If the cup disagrees, that is what we learn.</p>
 </section>
 <section>
 <div class="section-head"><div class="eyebrow">Afterward</div><h2>Feed it back</h2></div>
-<pre>run_roast-analyzer analyze.py full          # scan; each batch links to this profile and shows designed vs executed
+<pre>run_roast-analyzer analyze.py full          # read the logs; each batch shows the plan next to what the roast actually did
 run_roast-analyzer analyze.py cupping &lt;batch&gt; --intake      # once per batch, after resting
 run_roast-analyzer analyze.py profile &quot;Rwanda Rusizi Gaseke&quot; --revise    # the next version from the cups
 run_roast-analyzer analyze.py export-alarms &quot;Rwanda Rusizi Gaseke&quot;      # its alarm set and sheet</pre>
 </section>
-<footer><span>Generated 2026-09-18 12:03 from profile v2, based on design </span>
-<span>! f20: time trigger after TP; a BT trigger tracks the bean</span>
-<span>! h90: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
-<span>! h80: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
-<span>! h80: 51s after the previous heater move; under 60s the machine sees a ramp, not two cuts</span>
-<span>! h70: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
-<span>! h60: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
+<section class="appendix">
+<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row, to check what you loaded</h2></div>
+<pre> 1. CHARGE BT &gt; 0F             -&gt; (no action: marks &#x27;roast started&#x27;)
+ 2. ON +0:01                   -&gt; Event Button 3 (Control On)  [unless #1]
+ 3. ON +0:03                   -&gt; Event Button 1,5,8 (Motor On, Door Close, Stirrer Off)  [unless #1]
+ 4. ON +0:05                   -&gt; Heater 100%  [unless #6]
+ 5. ON +0:05                   -&gt; Fan 0%  [unless #6]
+ 6. ON BT &gt; 370F               -&gt; Heater 0% *  [unless #1]
+ 7. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
+ 8. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
+ 9. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
+10. ON BT &lt; 295F               -&gt; (no action: marks &#x27;cooled below the charge temperature&#x27;)  [if #9, unless #1]
+11. ON BT &gt; 300F               -&gt; Pop Up &#x27;CHARGE NOW: BT is back up to 300F&#x27; *  [if #10, unless #1]
+12. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
+13. CHARGE +0:15               -&gt; Fan 10%
+14. CHARGE +1:30               -&gt; Fan 20%
+15. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #12]
+16. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #12]
+17. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #12]
+18. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #12]
+19. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
+20. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
+21. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
+22. CHARGE BT &gt; 398F           -&gt; DROP *
+23. DROP +4:00                 -&gt; COOL END</pre>
+<p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
+</section>
+<footer><span>Generated 2026-11-03 18:16 from profile v2</span>
+<span>Note: f20: time trigger after TP; a BT trigger tracks the bean</span>
+<span>Note: h90, h80, h70, h60: a lone 10% step is invisible in BT rate-of-rise for ~2 min</span>
+<span>Note: h80: 51s after the previous heater move; under 60s the machine sees a ramp, not two cuts</span>
 </footer></div>

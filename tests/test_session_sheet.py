@@ -57,6 +57,9 @@ def test_render_sheet_manual_drop_first_session(tmp_path, monkeypatch):
     assert "<title>Rwanda Test v2</title>" in html and "<style>" in html
     assert "Config &rarr; Alarms &rarr; Load <code>profile-v2.alrm</code>" in html
     assert "Do not press CONTROL yourself" in html and "DROP is the panic button" in html
+    # charge on the way back up through 300F, never as BT first falls past it
+    assert "Charge at the pop-up" in html and "climbs back through 300F" in html
+    assert "Charge as soon as" not in html
     assert "COOL END" in html and "save the log" in html
     assert "You mark FCs" in html                                 # manual session: one marker
     assert "The alarms run the warm-up" in html and "370F" in html

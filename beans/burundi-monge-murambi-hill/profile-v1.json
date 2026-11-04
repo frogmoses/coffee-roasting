@@ -118,19 +118,19 @@
       "fc_popup_bt": 356
     },
     "predicted": {
-      "fc_time_s": 633,
+      "fc_time_s": 690,
       "fc_bt": 361,
       "drop_bt": 381,
-      "total_time_s": 785,
+      "total_time_s": 842,
       "confidence": "borrowed"
     },
     "changes_from_baseline": []
   },
   "predicted": {
-    "fc_time_s": 633,
+    "fc_time_s": 690,
     "fc_bt": 361,
     "drop_bt": 381,
-    "total_time_s": 785,
+    "total_time_s": 842,
     "confidence": "borrowed"
   },
   "flavor_hypothesis": "A balanced cup, neither sour nor roasty, sweet from start to finish with cane sugar and honey, brisk tea-like acidity with orange and citrus-rind brightness, syrupy body, and only mild astringency: the City+ roast where this Burundi shows its brightness without going flat",
@@ -520,13 +520,14 @@
     "borrowed_from": "Rwanda Rusizi Gaseke"
   },
   "watch_for": [
-    "First crack may come up to about a minute either side of 10:33, because the times come from the Rwanda. The heater cuts follow bean temperature, so they still land right; time the drop from your FCs mark, not the clock.",
+    "First crack should come around 11:30, up to about a minute either way. Your last Rwanda roast on this same schedule, at 59F, had the cracks start at 11:28 and you marked them at 11:44. The heater cuts follow bean temperature, so they still land right; time the drop from your FCs mark, not the clock.",
     "The beans should bottom out near 160-170F about a minute after charge, and be climbing again before the fan step to 20% at 1:30.",
     "Astringency: on the Rwanda it went away when the first heater cut came earlier. If this cup tastes drying, move the 262F cut earlier in the next version.",
     "The 2:32 batch should drop near 381F, well under the 398F automatic drop and the 408F eject."
   ],
   "exported": {
-    "at": "2026-11-01T15:09:19",
+    "at": "2026-11-03T18:16:43",
+    "first_at": "2026-11-01T15:09:19",
     "mode": "bt",
     "ear_latency_s": 0.0,
     "manual_drop": true,
@@ -548,6 +549,7 @@
     "why": "Development is not yet settled for THIS bean (envelope and verdicts are borrowed from Rwanda Rusizi Gaseke). On that prior, ~67-70s was very sour/grassy, ~134-152s was balanced and preferred, and ~190s turned roasty/astringent. Bracketing dev around the proven 152s finds this Burundi's own sweet spot in one session."
   },
   "notes": [
-    "2026-11-01: contrast set widened by hand to 120/152/180 s (designed 132/152/172 kept as contrast_lever_designed); first session on this bean, envelope borrowed from Rwanda Rusizi Gaseke."
+    "2026-11-01: contrast set widened by hand to 120/152/180 s (designed 132/152/172 kept as contrast_lever_designed); first session on this bean, envelope borrowed from Rwanda Rusizi Gaseke.",
+    "2026-11-03: expected first crack moved by hand from 10:33 to about 11:30 after Rwanda batch #27 ran this same schedule at 59F (ear onset 11:28, mark 11:44). Charge pop-up moved to BT rising through 300F; alarm file re-exported."
   ]
 }

@@ -50,6 +50,12 @@ from roast_schedule import (
     trigger_kind, expected_seconds, fmt_mmss, DEFAULT_WARMUP, DEFAULT_GUARDS,
 )
 
+# The drum keeps cooling for a minute or more after the heater comes back (BT
+# fell from 300F to 250-284F on #21-24 and #27). The charge pop-up arms only
+# once BT is this far under the charge temperature, so one noisy reading just
+# after the heater returns cannot say "charge" while the drum is still falling.
+CHARGE_TURN_MARGIN_F = 5
+
 # From-event codes (alarmtime), see artisan_conf.ALARM_FROM
 FROM_ON, FROM_CHARGE, FROM_FCS, FROM_DROP = 9, 0, 2, 6
 # Condition codes (alarmcond)
@@ -107,8 +113,10 @@ def _row(**kw):
 def warmup_rows(charge, roast_marker, motor_button=MOTOR_BUTTON):
     """The From-ON warm-up: control on (drum starts), motor on with the door
     closed and the stirrer off, heater 100 and fan 0 to the preheat BT,
-    heater off and fan up to cool, then a "charge now" pop-up at the charge
-    BT with the fan back to 0 and the heater to 100.
+    heater off and fan up to cool, the fan back to 0 and the heater to 100 at
+    the charge BT, then a "charge now" pop-up when BT has bottomed out and
+    climbed back through the charge BT. Every measured roast (#21-24, #27)
+    was charged on that rising side; the falling side is a colder drum.
 
     `roast_marker` is the 0-based index of the "roast started" row; every
     warm-up row is But-Not guarded by it. Returns the rows; the caller
@@ -133,17 +141,22 @@ def warmup_rows(charge, roast_marker, motor_button=MOTOR_BUTTON):
              action=ACT_FAN, string=str(w["cool_fan"]), negguard=roast_marker,
              label=f"warm-up: fan {w['cool_fan']}% to cool"),
         _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_LT, temperature=charge_bt,
-             action=ACT_POPUP, string=f"CHARGE NOW ({charge_bt}F): heater 100, fan 0",
-             beep=1, negguard=roast_marker, label="warm-up: charge pop-up"),
-        _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_LT, temperature=charge_bt,
              action=ACT_FAN, string="0", negguard=roast_marker, label="warm-up: fan 0%"),
         _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_LT, temperature=charge_bt,
              action=ACT_HEATER, string="100", negguard=roast_marker, label="warm-up: heater 100%"),
+        _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_LT,
+             temperature=charge_bt - CHARGE_TURN_MARGIN_F, negguard=roast_marker,
+             label=f"marker: cooled below the charge temperature (BT < {charge_bt - CHARGE_TURN_MARGIN_F}F)"),
+        _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_GT, temperature=charge_bt,
+             action=ACT_POPUP, string=f"CHARGE NOW: BT is back up to {charge_bt}F",
+             beep=1, negguard=roast_marker, label="warm-up: charge pop-up"),
     ]
     # Heater 100 / fan 0 at ON must not undo a heater-off / fan-up that fired
-    # first (a hot drum at ON): But Not the "preheat reached" row. The three
-    # "cooled to charge" rows fire only after the preheat row: If Alarm it.
-    return rows, {"heater_on": 2, "fan_on": 3, "preheat": 4, "cooled": (6, 7, 8)}
+    # first (a hot drum at ON): But Not the "preheat reached" row. The two
+    # "cooled to charge" rows fire only after the preheat row (If Alarm it),
+    # the marker only after them, and the pop-up only after the marker.
+    return rows, {"heater_on": 2, "fan_on": 3, "preheat": 4, "cooled": (6, 7),
+                  "turn_marker": 8, "charge_popup": 9}
 
 
 def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0,
@@ -182,6 +195,8 @@ def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0
         rows[base + idx["fan_on"]]["negguard"] = base + idx["preheat"]
         for i in idx["cooled"]:
             rows[base + i]["guard"] = base + idx["preheat"]
+        rows[base + idx["turn_marker"]]["guard"] = base + idx["cooled"][-1]
+        rows[base + idx["charge_popup"]]["guard"] = base + idx["turn_marker"]
 
     # -- descent marker for the BT-triggered staircase
     moves = schedule.get("moves", [])

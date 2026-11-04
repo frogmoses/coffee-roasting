@@ -378,14 +378,16 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
           "and sets heater 100% and fan 0%. <strong>Do not press CONTROL yourself, today or ever</strong>: releasing control turns the Hottop off.</li>")
         a(f"<li>The alarms run the warm-up: heater 100% until BT reaches <strong>{_e(warm.get('preheat_bt', 370))}F</strong>, "
           f"then heater {_e(warm.get('cool_heater', 0))}% and fan {_e(warm.get('cool_fan', 100))}% until BT falls to "
-          f"<strong>{_e(warm.get('charge_bt', 300))}F</strong>, then fan 0% and heater 100% with a pop-up that says charge. "
-          "Charge as soon as it does; write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>")
+          f"<strong>{_e(warm.get('charge_bt', 300))}F</strong>, then fan 0% and heater 100%. BT keeps falling for a minute or more, then climbs back. "
+          f"<strong>Charge at the pop-up</strong>, when BT climbs back through {_e(warm.get('charge_bt', 300))}F, about 2 to 3 minutes after the heater came back on. "
+          f"If no pop-up appears, charge when BT climbs back through {_e(warm.get('charge_bt', 300))}F. "
+          "Write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>")
     else:
         a("<li>ON, then right-click the timer LCD until the message bar says <strong>super on</strong>, then CONTROL once (<strong>Hottop control turned on</strong>). "
           "<strong>Never press CONTROL again today</strong>: releasing control turns the Hottop off.</li>")
         a(f"<li>Warm up by hand: drum motor on, heater 100% and overshoot to about <strong>{_e(warm.get('preheat_bt', 370))}F</strong> BT; "
           f"then heater {_e(warm.get('cool_heater', 0))}%, fan {_e(warm.get('cool_fan', 100))}%, let BT fall to <strong>{_e(warm.get('charge_bt', 300))}F</strong>; "
-          "heater back to 100%, fan 0%, and charge. Note the ET reading at that moment.</li>")
+          f"heater back to 100%, fan 0%. BT keeps falling, then climbs back: charge when it climbs back through {_e(warm.get('charge_bt', 300))}F. Note the ET reading at that moment.</li>")
     a("<li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack. "
       "If the timer is not running you have not pressed START and no alarm is watching: DROP and start over.</li>")
     a("<li><strong>DROP is the panic button.</strong> Never OFF during a roast: with recording off no alarm evaluates, the 398F drop included, "

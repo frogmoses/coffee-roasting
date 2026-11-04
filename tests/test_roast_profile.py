@@ -75,5 +75,13 @@ def test_match_profile_by_export_time(tmp_path, monkeypatch):
     assert rp.match_profile_to_roast(slug, "2026-09-20", "08:00")["version"] == 1
     assert rp.match_profile_to_roast(slug, "2026-09-20")["version"] == 2       # unknown time
     assert rp.match_profile_to_roast(slug, "2026-09-01") is None
+    # re-exporting a corrected alarm file keeps the roasts already run on it:
+    # the version stays linked by its first export, however late the new one
+    rp.mark_exported(p2, "bt", 0.0, True, [tmp_path / "y.alrm"])
+    assert p2["exported"]["first_at"] == "2026-09-20T08:30:00" and p2["exported"]["at"] > "2026-09-20T08:30:00"
+    rp.save_profile(p2)
+    assert rp.match_profile_to_roast(slug, "2026-09-20", "10:00")["version"] == 2
+    rp.mark_exported(p2, "bt", 0.0, True, [tmp_path / "y.alrm"])
+    assert p2["exported"]["first_at"] == "2026-09-20T08:30:00"
     rp.mark_exported(p3, "paired", 18.0, True, [tmp_path / "x.alrm"])
     assert p3["status"] == "exported" and p3["exported"]["manual_drop"] is True

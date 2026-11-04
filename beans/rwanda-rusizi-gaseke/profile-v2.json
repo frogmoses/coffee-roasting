@@ -510,7 +510,8 @@
     "FC declaration lag ~18 s from the ear detector; start the 150 s dev clock from the machine's FCs mark, not the first audible crack."
   ],
   "exported": {
-    "at": "2026-09-18T06:55:17",
+    "at": "2026-11-03T18:16:43",
+    "first_at": "2026-09-18T06:55:17",
     "mode": "bt",
     "ear_latency_s": 0.0,
     "manual_drop": true,
@@ -518,8 +519,21 @@
       "/home/brian/CodeProjects/coffee-roasting/beans/rwanda-rusizi-gaseke/alarms/profile-v2-bt.alrm"
     ]
   },
-  "roasts": [],
-  "status": "exported",
+  "roasts": [
+    {
+      "roast_id": "27_Rwanda Rusizi Gaseke_2026-11-03",
+      "batch_nr": 27,
+      "roast_date": "2026-11-03",
+      "dev_s": 162.0,
+      "fc_time": 704.0,
+      "fc_bt": 357.8,
+      "drop_bt": 374.0,
+      "execution": "6/6 moves executed; max 41s off schedule; dev 162s vs 150s designed; FC 11:44 vs 10:50 predicted",
+      "cupping_intake": null,
+      "cupping_notes": ""
+    }
+  ],
+  "status": "roasted",
   "rationale": "The staircase is proven and I keep it untouched \u2014 it delivers balanced, low-astringency roasts at a controlled rate into FC. The only cup-argued lever is development: the sour/thin batches were all short (70-116 s), the one balanced batch was 134 s, and the roaster still didn't 'drink again' because sweetness and body were low. Nudging development to 150 s (well under the 180 s cap, drop ~380F under the 398F ceiling) should lift sweetness and body without darkening past Full City. The session brackets dev at 130/150/170 so the roaster can pin the sweet spot in one contrast.",
   "roast_level_target": "City+",
   "contrast_lever_designed": {

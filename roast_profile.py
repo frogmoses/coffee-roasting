@@ -127,9 +127,17 @@ def save_profile(profile):
 
 
 def mark_exported(profile, mode, ear_latency_s, manual_drop, files):
-    """Record an export on the profile (in memory; call save_profile)."""
+    """Record an export on the profile (in memory; call save_profile).
+
+    `first_at` keeps the first export's time across re-exports. Roasts link to
+    a version by export time, so re-exporting a corrected alarm file must not
+    make a version look newer than the roasts already run on it.
+    """
+    now = datetime.now().isoformat(timespec="seconds")
+    previous = profile.get("exported") or {}
     profile["exported"] = {
-        "at": datetime.now().isoformat(timespec="seconds"),
+        "at": now,
+        "first_at": previous.get("first_at") or previous.get("at") or now,
         "mode": mode, "ear_latency_s": ear_latency_s, "manual_drop": manual_drop,
         "files": [str(f) for f in files],
     }
@@ -204,7 +212,7 @@ def match_profile_to_roast(slug, roast_date, roast_time=""):
     for v in list_versions(slug):
         prof = load_profile(slug, v)
         exported = (prof or {}).get("exported") or {}
-        at = exported.get("at", "")
+        at = exported.get("first_at") or exported.get("at", "")
         if at and at[:16] <= stamp:
             best = prof
     return best

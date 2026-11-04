@@ -144,7 +144,8 @@ Alarms -> Load the bean's `.alrm`, ON. The first alarm row takes Hottop
 control (super-user included) and starts the drum, so never press CONTROL
 yourself: releasing control turns the Hottop off (the old restart dance was
 that button). The From-ON rows run the warm-up (door closed, stirrer off,
-heater 100% to 370F, heater off and fan up to 300F, a pop-up says charge);
+heater 100% to 370F, heater off and fan up to 300F, heater back on; BT falls
+further, then a pop-up says charge as it climbs back through 300F);
 you press START and CHARGE; the alarms make every move through first
 crack; a 372F pop-up nags if FCs is still unmarked; a 398F row drops the
 beans if anything goes wrong. DROP is the panic button, never OFF: with

@@ -444,8 +444,9 @@ the best-cupped roast.
 **Profiles** (`roast_profile.py`): `beans/<slug>/profile-vN.json` (`new_profile`,
 `save_profile` numbers versions, `mark_exported`, `attach_roast`,
 `attach_verdict`, `set_reference`/`get_reference`, `match_profile_to_roast`
-= latest version exported before the roast's date/time; `ROAST_BEANS_DIR`
-overrides the root for tests). Status: draft -> exported -> roasted ->
+= latest version first exported before the roast's date/time (`exported.first_at`,
+kept across re-exports so correcting a version's alarm file does not unlink
+its roasts); `ROAST_BEANS_DIR` overrides the root for tests). Status: draft -> exported -> roasted ->
 cupped -> reference / superseded.
 
 **Alarm export** (`alarm_export.py`, verified against Artisan 4.0.0
@@ -455,8 +456,12 @@ condition (so "BT > 262 or CHARGE+4:28" is one row); guards are stored
 marker (From CHARGE, BT > 0) that But-Not guards every From-ON warm-up row
 (control on = Event Button "3", motor on / door close / stirrer off =
 Event Button "1,5,8", heater 100 and fan 0 at ON+5 s unless the preheat row
-fired, BT > 370 -> heater 0 + fan 100, BT < 300 If-Alarm that -> pop-up +
-fan 0 + heater 100); a "past the turning point" marker (BT < lowest trigger
+fired, BT > 370 -> heater 0 + fan 100, BT < 300 If-Alarm that -> fan 0 +
+heater 100, a marker at BT < 295 If-Alarm those (`CHARGE_TURN_MARGIN_F`, so
+one noisy reading cannot fire the pop-up), and BT > 300 If-Alarm the marker
+-> "CHARGE NOW" pop-up: charge on the rising side, as #21-24 and #27 were,
+not as BT first falls past 300, while the drum is still cooling and BT
+falls another 16-50F); a "past the turning point" marker (BT < lowest trigger
 - 10) that If-Alarm guards the BT rows (BT falls from 300F first); clock
 rows for the fan moves; the 356F pop-up; an "FC possible" marker (BT > 350)
 guarding the post-FC rows and the DROP row (From FC START + dev - ear
@@ -464,7 +469,7 @@ latency; omitted with `manual_drop`); a 372F "no FCs mark yet?" pop-up;
 BT > 398 -> DROP unconditional; COOL END at DROP + 240 s. The From-ON
 rows are: button 3 "Control On" at ON+1 s, buttons "1,5,8" (motor on,
 door close, stirrer off) at ON+3 s, heater 100 and fan 0 at ON+5 s (both
-But-Not the preheat row), then the preheat/cool/charge rows. The descent
+But-Not the preheat row), then the preheat, cool, and charge rows above. The descent
 marker is `BT < lowest trigger - 10 or CHARGE + 45 s`. `.alrm` = 11 plural keys (`write_alrm`/`read_alrm`);
 `rows_to_conf` writes the singular `[Alarms]` keys (>= 2 rows).
 `describe_rows` prints them 1-based like the dialog.

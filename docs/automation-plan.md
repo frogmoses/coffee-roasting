@@ -115,8 +115,10 @@ validation rejects anything outside bounds before it is written: heater
    command), and `→ OFF`.
 5. Warm-up (only after the Hottop test below passes): `From ON`: heater 100;
    `BT > 370` → heater 0, fan up; `BT < 300` guarded by the previous row →
-   SAY "charge", so the current manual pre-heat-to-370, cool-to-300 becomes
-   three rows and Keep ON carries Artisan from one batch to the next.
+   heater 100, fan 0; BT rising back through 300 → SAY "charge" (as built,
+   see `alarm_export.warmup_rows`: every measured roast was charged on the
+   rising side), so the current manual pre-heat-to-370, cool-to-300 becomes
+   alarm rows.
 
 The file is named by bean and rsynced to the roaster next to the ear; the
 session sheet says which set to load.

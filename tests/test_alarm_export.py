@@ -66,8 +66,18 @@ def test_paired_rows_encode_bt_with_time_fallback_and_guards():
     assert motor["action"] == ae.ACT_BUTTON and motor["string"] == "1,5,8" and motor["negguard"] == i_roast
     i_pre, pre = _by_label(rows, "370F reached")
     assert pre["source"] == ae.SRC_BT and pre["temperature"] == 370 and pre["string"] == "0"
+    # heater back on at 300F falling; the charge pop-up waits until BT has
+    # fallen 5F further and climbed back through 300F
+    i_back = next(i for i, r in enumerate(rows) if r["action"] == ae.ACT_HEATER and r["string"] == "100"
+                  and r["cond"] == ae.COND_LT and r["temperature"] == 300)
+    assert rows[i_back]["guard"] == i_pre
+    i_turn, turn = _by_label(rows, "cooled below the charge temperature")
+    assert turn["cond"] == ae.COND_LT and turn["temperature"] == 295 and turn["guard"] == i_back
+    assert turn["action"] == ae.ACT_NONE and turn["negguard"] == i_roast
     i_pop, pop = _by_label(rows, "charge pop-up")
-    assert pop["cond"] == ae.COND_LT and pop["temperature"] == 300 and pop["guard"] == i_pre
+    assert pop["cond"] == ae.COND_GT and pop["temperature"] == 300 and pop["guard"] == i_turn
+    assert pop["action"] == ae.ACT_POPUP and pop["beep"] == 1 and pop["negguard"] == i_roast
+    assert i_pre < i_back < i_turn < i_pop
     # heater 100% and fan 0% at ON+5s are But-Not guarded by the preheat row
     # (a hot drum at ON must not have its cooling undone)
     on_rows = [r for r in rows if r["from"] == ae.FROM_ON and r["offset"] == 5]
