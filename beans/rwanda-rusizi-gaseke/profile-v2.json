@@ -529,11 +529,21 @@
       "fc_bt": 357.8,
       "drop_bt": 374.0,
       "execution": "6/6 moves executed; max 41s off schedule; dev 162s vs 150s designed; FC 11:44 vs 10:50 predicted",
-      "cupping_intake": null,
-      "cupping_notes": ""
+      "cupping_intake": {
+        "brew": "cupping",
+        "rest_days": 7,
+        "balance": 0,
+        "astringency": 1,
+        "sweetness": 1,
+        "body": -1,
+        "preference": "better",
+        "drink_again": "meh",
+        "notes": "The automated roast was easy to do and follow. I think overall this 1 batch is better than all previous. But it is still lacking fuller body and sweetness."
+      },
+      "cupping_notes": "Brewed as cupping bowl / immersion 7 days after roast. Balance: balanced, neither stands out. Astringency: slight drying at the finish. Sweetness: a hint. Body: thin, watery. Versus previous batch: better. Drink again: it's fine. Notes: The automated roast was easy to do and follow. I think overall this 1 batch is better than all previous. But it is still lacking fuller body and sweetness."
     }
   ],
-  "status": "roasted",
+  "status": "cupped",
   "rationale": "The staircase is proven and I keep it untouched \u2014 it delivers balanced, low-astringency roasts at a controlled rate into FC. The only cup-argued lever is development: the sour/thin batches were all short (70-116 s), the one balanced batch was 134 s, and the roaster still didn't 'drink again' because sweetness and body were low. Nudging development to 150 s (well under the 180 s cap, drop ~380F under the 398F ceiling) should lift sweetness and body without darkening past Full City. The session brackets dev at 130/150/170 so the roaster can pin the sweet spot in one contrast.",
   "roast_level_target": "City+",
   "contrast_lever_designed": {
