@@ -704,7 +704,14 @@ def display_profile(profile, envelope=None):
         lines.append(_box_separator(w))
         lines += _wrap_rows("Expect in the cup: " + hyp, w, prefix=" ", indent="   ")
     lever = profile.get("contrast_lever")
-    if lever:
+    if lever and lever.get("variants"):
+        # A heater-move bracket: one alarm set per batch
+        lines += _wrap_rows(f"Contrast set, one alarm set per batch. {lever.get('why', '')}",
+                            w, prefix=" ", indent="   ")
+        for v in lever["variants"]:
+            lines += _wrap_rows(f"Batch {v.get('batch')} ({v.get('label')}): {v.get('change', '')}",
+                                w, prefix="  - ", indent="    ")
+    elif lever:
         vals = ", ".join(str(v) for v in lever.get("values", []))
         lines += _wrap_rows(f"Contrast set varies {lever.get('key')}: {vals}. {lever.get('why', '')}",
                             w, prefix=" ", indent="   ")

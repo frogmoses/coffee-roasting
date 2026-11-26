@@ -100,3 +100,40 @@ def test_fan_after_fc_bracket_cards_keep_dev_and_name_the_slider_move():
     assert "Batch 2 &middot; fan 40%" in html and "At FCs: fan &rarr; 40%" in html
     assert "move the fan slider to 30%</strong>, then start a stopwatch" in html
     assert "airflow from FC" in html
+
+
+def _variant_profile():
+    """The fixture profile as a heater-move bracket, one alarm set per batch."""
+    prof = _profile(exported={"at": "2026-11-23T12:00:00", "mode": "bt", "ear_latency_s": 0,
+                              "manual_drop": True, "files": []})
+    import copy
+    later = copy.deepcopy(prof["schedule"])
+    for mv in later["moves"]:
+        if mv["id"] == "h60":
+            mv["trigger"] = {"bt": 330}
+    prof["contrast_lever"] = {"key": "schedule_variants", "why": "late heat both ways", "variants": [
+        {"batch": 1, "label": "control", "change": "As v1", "note": "the control", "schedule": prof["schedule"]},
+        {"batch": 2, "label": "more late heat", "change": "60% at 330F", "note": "more heat", "schedule": later}]}
+    return prof
+
+
+def test_variant_bracket_cards_and_sheet_load_one_set_per_batch():
+    prof = _variant_profile()
+    env = _envelope()
+    rows = {v["batch"]: ae.schedule_to_alarms(v["schedule"], env, mode="bt", manual_drop=True)["rows"]
+            for v in prof["contrast_lever"]["variants"]}
+    batch_rows = {1: ("p-v2-bt-batch1.alrm", rows[1]), 2: ("p-v2-bt-batch2.alrm", rows[2])}
+    cards = ss.batches_from_profile(prof, env, batch_rows=batch_rows)
+    assert [(c["order"], c["label"], c["dev_s"], c["alarm_file"]) for c in cards] == \
+           [(1, "control", 140, "p-v2-bt-batch1.alrm"), (2, "more late heat", 140, "p-v2-bt-batch2.alrm")]
+    html = ss.render_sheet(prof, None, env, rows[1], alarm_file="p-v2-bt-batch1.alrm", batch_rows=batch_rows)
+    assert "Load batch 1's set, <code>p-v2-bt-batch1.alrm</code>" in html
+    assert "Every batch today has its own alarm set" in html
+    assert "<strong>load the next batch's alarm set</strong>" in html      # between batches
+    assert "only the heater moves change" in html and "60% at 330F" in html
+    assert "Load <code>p-v2-bt-batch2.alrm</code>" in html                   # on batch 2's card
+    assert "Batch 2: p-v2-bt-batch2.alrm" in html and "BT &gt; 330F" in html  # its own table
+    assert "late heat both ways" in html
+    # a single-set sheet never mentions per-batch loading
+    plain = ss.render_sheet(_profile(), None, env, rows[1], alarm_file="p.alrm")
+    assert "next batch's alarm set" not in plain and "Alarm sets <b>one per batch" not in plain

@@ -535,8 +535,75 @@
       "/home/brian/CodeProjects/coffee-roasting/beans/burundi-monge-murambi-hill/alarms/profile-v1-bt.alrm"
     ]
   },
-  "roasts": [],
-  "status": "exported",
+  "roasts": [
+    {
+      "roast_id": "28_Burundi Monge Murambi Hill_2026-11-14",
+      "batch_nr": 28,
+      "roast_date": "2026-11-14",
+      "dev_s": 168.0,
+      "fc_time": 694.0,
+      "fc_bt": 357.8,
+      "drop_bt": 375.8,
+      "execution": "6/6 moves executed; max 49s off schedule; dev 168s vs 152s designed; FC 11:34 vs 11:30 predicted",
+      "cupping_intake": {
+        "brew": "switch",
+        "rest_days": 7,
+        "balance": 0,
+        "astringency": 0,
+        "sweetness": 0,
+        "body": 0,
+        "preference": "na",
+        "drink_again": "meh",
+        "notes": "I would like the body to be a bit fuller"
+      },
+      "cupping_notes": "Brewed as Hario Switch 7 days after roast. Balance: balanced, neither stands out. Astringency: clean, none. Sweetness: none. Body: medium. Versus previous batch: no basis to compare. Drink again: it's fine. Notes: I would like the body to be a bit fuller"
+    },
+    {
+      "roast_id": "29_Burundi Monge Murambi Hill_2026-11-14",
+      "batch_nr": 29,
+      "roast_date": "2026-11-14",
+      "dev_s": 126.0,
+      "fc_time": 694.0,
+      "fc_bt": 357.2,
+      "drop_bt": 368.6,
+      "execution": "6/6 moves executed; max 61s off schedule; dev 126s vs 152s designed; FC 11:34 vs 11:30 predicted",
+      "cupping_intake": {
+        "brew": "switch",
+        "rest_days": 7,
+        "balance": 0,
+        "astringency": 0,
+        "sweetness": 0,
+        "body": 0,
+        "preference": "worse",
+        "drink_again": "meh",
+        "notes": "This is a little less developed than the previous batch"
+      },
+      "cupping_notes": "Brewed as Hario Switch 7 days after roast. Balance: balanced, neither stands out. Astringency: clean, none. Sweetness: none. Body: medium. Versus previous batch: worse. Drink again: it's fine. Notes: This is a little less developed than the previous batch"
+    },
+    {
+      "roast_id": "30_Burundi Monge Murambi Hill_2026-11-14",
+      "batch_nr": 30,
+      "roast_date": "2026-11-14",
+      "dev_s": 180.0,
+      "fc_time": 684.0,
+      "fc_bt": 359.0,
+      "drop_bt": 379.4,
+      "execution": "6/6 moves executed; max 47s off schedule; dev 180s vs 152s designed; FC 11:24 vs 11:30 predicted",
+      "cupping_intake": {
+        "brew": "switch",
+        "rest_days": 7,
+        "balance": 1,
+        "astringency": 0,
+        "sweetness": 0,
+        "body": 0,
+        "preference": "same",
+        "drink_again": "meh",
+        "notes": "Definetly hitting the furthest reaches of development. This is one step too far"
+      },
+      "cupping_notes": "Brewed as Hario Switch 7 days after roast. Balance: a little roasty or bitter. Astringency: clean, none. Sweetness: none. Body: medium. Versus previous batch: about the same. Drink again: it's fine. Notes: Definetly hitting the furthest reaches of development. This is one step too far"
+    }
+  ],
+  "status": "cupped",
   "rationale": "This Burundi is a dense, high-grown washed Bourbon, close kin to the Rwanda Rusizi Gaseke: same process, same variety, same bean density, and the same charge and warm-up. So version 1 keeps the Rwanda schedule exactly: the same fan steps and the same four heater cuts at the same bean temperatures. On the Rwanda, development of about 2:15 to 2:30 after first crack tasted balanced and best; under about 1:40 it was sour, and past about 3:10 roasty. This plan's 2:32 sits in that window and suits a City+ roast that keeps the tea-like brightness and honey sweetness. First crack can land up to a minute away from the prediction on a bean roasted here for the first time, so nothing else changes yet; the three batches test development instead, and this first session finds the Burundi's own best development time.",
   "roast_level_target": "City+",
   "contrast_lever_designed": {

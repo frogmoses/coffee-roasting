@@ -36,6 +36,7 @@ from roast_analysis import (
     compare_roasts,
     refresh_recommendations,
     select_prior_roasts,
+    select_later_roasts,
 )
 from cupping_intake import run_intake, normalize_intake, intake_to_text
 from roast_plan import build_contrast_plan, parse_dev_times, DEFAULT_DEV_TIMES
@@ -60,7 +61,7 @@ from alarm_export import schedule_to_alarms, write_alrm, rows_to_conf
 from roast_profile import (
     slugify, find_bean_title, load_profile, save_profile, new_profile, mark_exported,
     set_reference, get_reference, attach_roast, match_profile_to_roast, alarm_path,
-    list_versions,
+    list_versions, schedule_variants, variant_suffix,
 )
 from roast_display import display_profile, display_alarm_rows, display_execution
 from bean_dossier import (
@@ -232,6 +233,12 @@ def cmd_scan(args):
             history, roast_id, data.get("title", ""),
             data.get("roast_date", ""), data.get("batch_nr", 0),
         )
+        # Later batches of the same session (on a --force re-scan they are
+        # already in history): a contrast set is judged as a set
+        later_roasts = select_later_roasts(
+            history, roast_id, data.get("title", ""),
+            data.get("roast_date", ""), data.get("batch_nr", 0),
+        )
 
         # The profile version exported before this roast, if the bean has one
         prof = _profile_for_roast(data)
@@ -243,6 +250,7 @@ def cmd_scan(args):
             prior_roasts=prior_roasts,
             audio_data=audio_data,
             profile=prof,
+            later_roasts=later_roasts,
         )
         analysis["source_file"] = str(alog_path)
         if prof:
@@ -766,9 +774,10 @@ def _revise_version(history, title, slug, version=None):
     _save_design(title, slug, result, env, based_on, status)
 
 
-def _write_sheet_for(title, slug, prof, env, rows, alarm_file):
+def _write_sheet_for(title, slug, prof, env, rows, alarm_file, batch_rows=None):
     html_text = render_sheet(prof, load_dossier(slug), env, rows,
-                             batches_from_profile(prof, env), alarm_file=alarm_file)
+                             batches_from_profile(prof, env, batch_rows=batch_rows),
+                             alarm_file=alarm_file, batch_rows=batch_rows)
     path = write_sheet(slug, prof["version"], html_text)
     print(f"Sheet: {path}")
     return path
@@ -786,15 +795,17 @@ def cmd_sheet(args):
     if not env.get("median_curve"):
         env = prof.get("envelope_snapshot") or env
     exported = prof.get("exported") or {}
-    rows, alarm_file = None, None
+    rows, alarm_file, batch_rows = None, None, None
     if exported:
-        res = schedule_to_alarms(prof["schedule"], env, mode=exported.get("mode", "paired"),
-                                 ear_latency_s=exported.get("ear_latency_s") or 0,
-                                 manual_drop=exported.get("manual_drop", False))
-        rows = res["rows"] if not res["errors"] else None
+        sets = _alarm_sets(prof, env, exported.get("mode", "paired"),
+                           exported.get("ear_latency_s") or 0, exported.get("manual_drop", False))
+        ok = not any(st["errors"] for st in sets)
+        rows = sets[0]["rows"] if ok else None
         files = exported.get("files") or []
         alarm_file = Path(files[0]).name if files else None
-    _write_sheet_for(title, slug, prof, env, rows, alarm_file)
+        if ok and len(files) == len(sets) and sets[0]["batch"]:
+            batch_rows = {st["batch"]: (Path(f).name, st["rows"]) for st, f in zip(sets, files)}
+    _write_sheet_for(title, slug, prof, env, rows, alarm_file, batch_rows=batch_rows)
 
 
 def cmd_export_alarms(args):
@@ -825,7 +836,8 @@ def cmd_export_alarms(args):
         latency = float(latency_arg)
     mode = getattr(args, "mode", None)
     lever = prof.get("contrast_lever") or {}
-    bracket = len({v for v in (lever.get("values") or []) if v is not None}) > 1
+    bracket = (len({v for v in (lever.get("values") or []) if v is not None}) > 1
+               or len(schedule_variants(prof)) > 1)
     if not mode:
         # A borrowed envelope's clock fallbacks come from another bean's
         # curve; a slower bean would get its cuts early. Temperature only.
@@ -839,7 +851,9 @@ def cmd_export_alarms(args):
                   "without clock fallbacks (the first session calibrates this bean's timing)")
         elif bracket:
             mode = "bt"
-            print(f"  Contrast set on {lever.get('key', 'dev_seconds')} {lever.get('values')}: exporting "
+            what = ("heater moves, one set per batch" if schedule_variants(prof)
+                    else f"{lever.get('key', 'dev_seconds')} {lever.get('values')}")
+            print(f"  Contrast set on {what}: exporting "
                   "BT-triggered rows only, so every batch gets the same cuts at the same BT "
                   "(--mode paired to override)")
         else:
@@ -852,33 +866,63 @@ def cmd_export_alarms(args):
     warmup = not getattr(args, "no_warmup", False)
     cool = getattr(args, "cool", None)
     cool = 240 if cool is None else int(cool)
-    res = schedule_to_alarms(prof["schedule"], env, mode=mode, ear_latency_s=latency,
-                             manual_drop=manual_drop, warmup=warmup, cool_after_s=cool)
-    for w in res["warnings"]:
-        print(f"  ! {w}")
-    if res["errors"]:
-        for e in res["errors"]:
-            print(f"  !! {e}")
+    sets = _alarm_sets(prof, env, mode, latency, manual_drop, warmup=warmup, cool_after_s=cool)
+    failed = False
+    for s in sets:
+        who = f"batch {s['batch']}: " if s["batch"] else ""
+        for w in s["warnings"]:
+            print(f"  ! {who}{w}")
+        for e in s["errors"]:
+            print(f"  !! {who}{e}")
+            failed = True
+    if failed:
         print("Not exported.")
         return
     _warn_if_quantifiers_active()
-    suffix = "" if mode == "paired" else f"-{mode}"
-    path = alarm_path(slug, prof["version"], suffix)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_alrm(path, res["rows"])
-    mark_exported(prof, mode, latency, manual_drop, [path])
+    paths = []
+    for s in sets:
+        path = alarm_path(slug, prof["version"], s["suffix"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_alrm(path, s["rows"])
+        paths.append(path)
+        label = f" batch {s['batch']} ({s['label']})" if s["batch"] else ""
+        print(display_alarm_rows(s["rows"], f"Alarm set: {title} v{prof['version']}{label} ({mode})"))
+        print(f"Written: {path}")
+    mark_exported(prof, mode, latency, manual_drop, paths)
     save_profile(prof)
-    print(display_alarm_rows(res["rows"], f"Alarm set: {title} v{prof['version']} ({mode})"))
-    print(f"Written: {path}")
-    _write_sheet_for(title, slug, prof, env, res["rows"], path.name)
-    print("On the roaster: Config -> Alarms -> Load this file, then ON. The first row takes Hottop control; "
-          "never press CONTROL yourself.")
+    _write_sheet_for(title, slug, prof, env, sets[0]["rows"], paths[0].name,
+                     batch_rows={s["batch"]: (p.name, s["rows"]) for s, p in zip(sets, paths) if s["batch"]})
+    if len(sets) > 1:
+        print("On the roaster: each batch has its own alarm set. Load batch 1's before the first ON, and the "
+              "next batch's after each save, before ON. The first row takes Hottop control; never press CONTROL yourself.")
+    else:
+        print("On the roaster: Config -> Alarms -> Load this file, then ON. The first row takes Hottop control; "
+              "never press CONTROL yourself.")
     if manual_drop:
         print("DROP is manual for this set: you mark FCs and press DROP at FC + dev yourself.")
     else:
         print("The ear marks FCs for this set (run it with --push-artisan); keep your hands off the FCs button.")
     if getattr(args, "install_local", False):
-        _install_local_alarms(res["rows"])
+        _install_local_alarms(sets[0]["rows"])
+
+
+def _alarm_sets(prof, env, mode, latency, manual_drop, warmup=True, cool_after_s=240):
+    """The alarm set(s) a profile exports: one, or one per batch when the
+    contrast set varies the heater moves themselves (`schedule_variants`).
+    Each is {batch, label, suffix, rows, warnings, errors}; batch is None for
+    a single set."""
+    suffix = "" if mode == "paired" else f"-{mode}"
+    variants = schedule_variants(prof)
+    targets = ([(v["schedule"], v.get("batch"), v.get("label", ""), variant_suffix(suffix, v.get("batch")))
+                for v in variants]
+               or [(prof["schedule"], None, "", suffix)])
+    sets = []
+    for sched, batch, label, sfx in targets:
+        res = schedule_to_alarms(sched, env, mode=mode, ear_latency_s=latency,
+                                 manual_drop=manual_drop, warmup=warmup, cool_after_s=cool_after_s)
+        sets.append({"batch": batch, "label": label, "suffix": sfx, "rows": res["rows"],
+                     "warnings": res["warnings"], "errors": res["errors"]})
+    return sets
 
 
 def _warn_if_quantifiers_active(conf_path=None):

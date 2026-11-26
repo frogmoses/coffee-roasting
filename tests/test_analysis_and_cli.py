@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import analyze
 import roast_analysis
-from roast_analysis import compare_roasts, select_prior_roasts
+from roast_analysis import compare_roasts, select_prior_roasts, select_later_roasts
 from roast_metrics import build_curve_series
 from roast_narrative import build_control_timeline, format_narrative
 from sentinel_loader import detect_plateau, match_sentinel_to_roast
@@ -121,6 +121,50 @@ def test_select_prior_roasts_same_bean_earlier_only():
     assert prior[0]["next_roast"] == ["advice-1"]
     # Nothing earlier than batch 1 -> no priors for it
     assert select_prior_roasts(history, "1_Bean_2026-06-01", "Bean", "2026-06-01", 1) == []
+
+
+def test_select_later_roasts_same_bean_same_day_after_this_batch():
+    history = {
+        "28_Bean_2026-11-14": _history_entry("28_Bean_2026-11-14", "Bean", "2026-11-14", 28, "best"),
+        "29_Bean_2026-11-14": _history_entry("29_Bean_2026-11-14", "Bean", "2026-11-14", 29, "sour"),
+        "30_Bean_2026-11-14": _history_entry("30_Bean_2026-11-14", "bean", "2026-11-14", 30, "too far"),
+        "31_Other_2026-11-14": _history_entry("31_Other_2026-11-14", "Other", "2026-11-14", 31),
+        "32_Bean_2026-11-20": _history_entry("32_Bean_2026-11-20", "Bean", "2026-11-20", 32),
+    }
+    history["30_Bean_2026-11-14"]["execution"] = {"variant": {"batch": 3, "label": "extra cut"}}
+    later = select_later_roasts(history, "28_Bean_2026-11-14", "Bean", "2026-11-14", 28)
+    # same day only, other bean and the next session excluded, roasting order
+    assert [p["batch_nr"] for p in later] == [29, 30]
+    assert later[1]["cupping_notes"] == "too far"
+    assert later[1]["variant"] == {"batch": 3, "label": "extra cut"}
+    # the last batch of the day has none; earlier batches stay out
+    assert select_later_roasts(history, "30_Bean_2026-11-14", "Bean", "2026-11-14", 30) == []
+    # rendered without the advice given after each (it was written knowing this roast)
+    from llm_recommender import _build_user_content
+    body = _build_user_content({}, {}, None, "", later_roasts=later)
+    assert "LATER BATCHES FROM THE SAME SESSION" in body
+    assert 'Cupped: "too far"' in body and "advice-30" not in body
+    assert "ran session batch 3 (extra cut)" in body
+
+
+def test_refresh_shows_the_later_batches_of_the_session(tmp_path, monkeypatch):
+    import roast_analysis
+    seen = {}
+
+    def fake_llm(metrics, data, bean_profile, **kw):
+        seen.update(kw)
+        return {"recommendations": [], "next_roast": ["x"]}, "ok"
+
+    monkeypatch.setattr(roast_analysis, "generate_llm_recommendations", fake_llm)
+    monkeypatch.setattr(roast_analysis, "parse_alog", lambda path: {})
+    monkeypatch.setattr(roast_analysis, "extract_roast_data", lambda raw: {})
+    history = {
+        "28_Bean_2026-11-14": _history_entry("28_Bean_2026-11-14", "Bean", "2026-11-14", 28),
+        "30_Bean_2026-11-14": _history_entry("30_Bean_2026-11-14", "Bean", "2026-11-14", 30, "too far"),
+    }
+    entry = dict(history["28_Bean_2026-11-14"], source_file="x.alog")
+    assert roast_analysis.refresh_recommendations(entry, history) == (True, "ok")
+    assert [p["batch_nr"] for p in seen["later_roasts"]] == [30]
 
 
 # --- Roast comparison ---

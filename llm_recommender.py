@@ -144,6 +144,15 @@ the intended direction (especially in the cup), and build on that history \
 rather than repeating generic advice. The roast-to-roast deltas are the real \
 dial-in signal.
 
+If LATER BATCHES FROM THE SAME SESSION are shown, this roast was one batch of \
+a set roasted the same day to be tasted side by side (a contrast set: one \
+lever varied, such as development time or a heater cut). Their cups answer \
+questions this roast raises. Judge this batch as part of the set: never \
+advise a change a later batch already tried and the operator tasted as worse \
+or too far (e.g. a longer development that cupped roasty), and say which \
+batch of the set the cups favor. They come after this roast, so their \
+metrics are not dial-in history and nothing was advised before them.
+
 """
     + HOTTOP_CONTROLS
     + "\n"
@@ -304,9 +313,11 @@ def _observations_block(data):
     return "\n".join(parts)
 
 
-def _prior_block(prior_roasts):
+def _prior_block(prior_roasts, advice=True):
     """Render earlier roasts of the same bean: facts, prior advice, and how
-    each cupped — the dial-in history the model should build on."""
+    each cupped — the dial-in history the model should build on. With
+    `advice=False` (later batches of the session) the advice given after
+    each is left out: it was written knowing this roast, not before it."""
     if not prior_roasts:
         return ""
     lines = []
@@ -346,10 +357,12 @@ def _prior_block(prior_roasts):
         if p.get("fc_audio_offset") is not None:
             facts.append(f"audio FC {p['fc_audio_offset']:+d}s vs mark")
         header = f"Batch {p.get('batch_nr', '?')} ({p.get('roast_date', 'unknown date')})"
+        if p.get("variant"):
+            header += f", ran session batch {p['variant'].get('batch')} ({p['variant'].get('label')})"
         lines.append(f"{header}: {', '.join(facts) if facts else 'no metrics recorded'}")
-        advice = p.get("next_roast") or []
-        if advice:
-            lines.append(f"  Advised after that roast: {'; '.join(advice)}")
+        given = p.get("next_roast") or []
+        if given and advice:
+            lines.append(f"  Advised after that roast: {'; '.join(given)}")
         notes = p.get("cupping_notes", "")
         lines.append(f"  Cupped: \"{notes}\"" if notes else "  Cupped: (no notes)")
     return "\n".join(lines)
@@ -357,7 +370,8 @@ def _prior_block(prior_roasts):
 
 def _build_user_content(metrics, data, bean_profile, narrative_text,
                         cupping_notes="", warnings=None, prior_roasts=None,
-                        execution=None, profile_ref=None, flavor_hypothesis=""):
+                        execution=None, profile_ref=None, flavor_hypothesis="",
+                        later_roasts=None):
     """Assemble the full analysis prompt body."""
     sections = []
     if warnings:
@@ -399,6 +413,9 @@ def _build_user_content(metrics, data, bean_profile, narrative_text,
     prior = _prior_block(prior_roasts)
     if prior:
         sections += ["", "PREVIOUS ROASTS OF THIS BEAN (oldest first):", prior]
+    later = _prior_block(later_roasts, advice=False)
+    if later:
+        sections += ["", "LATER BATCHES FROM THE SAME SESSION (same bean, same day, roasted after this one):", later]
     if cupping_notes:
         sections += ["", "ROASTER'S OWN CUPPING NOTES (this roast):", cupping_notes]
     sections += [
@@ -411,7 +428,8 @@ def _build_user_content(metrics, data, bean_profile, narrative_text,
 def generate_llm_recommendations(metrics, data, bean_profile=None,
                                  cupping_notes=None, warnings=None,
                                  prior_roasts=None, execution=None,
-                                 profile_ref=None, flavor_hypothesis=""):
+                                 profile_ref=None, flavor_hypothesis="",
+                                 later_roasts=None):
     """Generate recommendations + next-roast actions via Claude.
 
     Args:
@@ -425,6 +443,8 @@ def generate_llm_recommendations(metrics, data, bean_profile=None,
         warnings: Optional list of data-quality warnings from validate_metrics().
         prior_roasts: Optional list of compact prior-roast dicts (same bean)
             from roast_analysis.select_prior_roasts().
+        later_roasts: Optional later batches of the same session (same bean,
+            same day) from roast_analysis.select_later_roasts().
         execution: Optional roast_schedule.compare_execution() result when
             the roast ran on a designed profile; profile_ref names the
             version and flavor_hypothesis is what the design expected.
@@ -443,6 +463,7 @@ def generate_llm_recommendations(metrics, data, bean_profile=None,
         prior_roasts=prior_roasts,
         execution=execution, profile_ref=profile_ref,
         flavor_hypothesis=flavor_hypothesis,
+        later_roasts=later_roasts,
     )
     result, status = structured_call(_SYSTEM_PROMPT, user_content, _OUTPUT_SCHEMA,
                                      task="to analyze this roast")

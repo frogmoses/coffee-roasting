@@ -109,6 +109,43 @@ def test_scan_links_roasts_to_the_exported_profile(tmp_path, monkeypatch, capsys
     assert "Designed vs Executed" in capsys.readouterr().out
 
 
+def test_variant_set_exports_one_alarm_file_per_batch_and_scan_names_the_batch(tmp_path, monkeypatch, capsys):
+    logs = _setup(tmp_path, monkeypatch)
+    analyze.cmd_profile(_Args(bean="rwanda", from_roast="2", dev=None, version=None,
+                              set_reference=None, roast=None))
+    path = tmp_path / "beans" / "rwanda-test" / "profile-v1.json"
+    prof = json.loads(path.read_text())
+    control = prof["schedule"]
+    extra = json.loads(json.dumps(control))
+    extra["moves"].append({"id": "h50", "trigger": {"bt": 352}, "action": "heater", "value": 50})
+    prof["contrast_lever"] = {"key": "schedule_variants", "why": "late heat", "variants": [
+        {"batch": 1, "label": "control", "change": "as before", "note": "", "schedule": control},
+        {"batch": 2, "label": "extra cut", "change": "plus 50% at 352F", "note": "", "schedule": extra}]}
+    path.write_text(json.dumps(prof))
+    capsys.readouterr()
+    analyze.cmd_export_alarms(_Args(bean="rwanda", version=None, mode=None, manual_drop=True,
+                                    ear_latency="auto", no_warmup=False, cool=None, install_local=False))
+    out = capsys.readouterr().out
+    alarms = tmp_path / "beans" / "rwanda-test" / "alarms"
+    assert "heater moves, one set per batch" in out                    # BT-only rows for a bracket
+    files = [alarms / "profile-v1-bt-batch1.alrm", alarms / "profile-v1-bt-batch2.alrm"]
+    assert all(f.exists() for f in files) and "each batch has its own alarm set" in out
+    assert json.loads(path.read_text())["exported"]["files"] == [str(f) for f in files]
+    one, two = (json.loads(f.read_text()) for f in files)
+    assert len(two["alarmflags"]) == len(one["alarmflags"]) + 1          # the extra cut's row
+    sheet = (tmp_path / "beans" / "rwanda-test" / "sheet-v1.html").read_text()
+    assert "Load <code>profile-v1-bt-batch2.alrm</code>" in sheet
+    # the sheet command rebuilds the same per-batch sheet from the stored export
+    analyze.cmd_sheet(_Args(bean="rwanda", version=None))
+    assert "Batch 2: profile-v1-bt-batch2.alrm" in (tmp_path / "beans" / "rwanda-test" / "sheet-v1.html").read_text()
+    # a roast after the export ran the control's moves: scan names batch 1
+    _write_staircase_alog(logs, "r3", 3, "Rwanda Test", "2099-01-01", "10:00")
+    analyze.cmd_scan(_Args(force=False))
+    assert "Profile v1: ran batch 1 (control)" in capsys.readouterr().out
+    prof = json.loads(path.read_text())
+    assert prof["roasts"][0]["variant"] == {"batch": 1, "label": "control"}
+
+
 def test_set_reference(tmp_path, monkeypatch, capsys):
     _setup(tmp_path, monkeypatch)
     analyze.cmd_profile(_Args(bean="rwanda", from_roast="2", dev=None, version=None,

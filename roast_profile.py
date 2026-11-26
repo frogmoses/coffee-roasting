@@ -145,6 +145,27 @@ def mark_exported(profile, mode, ear_latency_s, manual_drop, files):
         profile["status"] = "exported"
 
 
+def schedule_variants(profile):
+    """The per-batch schedules of a `schedule_variants` contrast set, or [].
+
+    A development bracket varies only the drop timer, so one alarm set serves
+    every batch. A bracket on the heater moves themselves (a cut at a
+    different BT, an extra cut) needs a different alarm set per batch; the
+    lever then carries `variants`: [{batch, label, change, note, schedule}],
+    batch 1 being the profile's own `schedule` (the control).
+    """
+    lever = profile.get("contrast_lever") or {}
+    if lever.get("key") != "schedule_variants":
+        return []
+    return sorted((v for v in lever.get("variants") or [] if v.get("schedule")),
+                  key=lambda v: v.get("batch", 0))
+
+
+def variant_suffix(suffix, batch):
+    """Alarm-file suffix for one batch of a variant set: -bt -> -bt-batch2."""
+    return f"{suffix}-batch{int(batch)}"
+
+
 def set_reference(slug, version, roast_id):
     """Mark a version as the bean's reference (the roast that tasted right)."""
     ref = {"version": int(version), "roast_id": roast_id,
@@ -175,6 +196,8 @@ def attach_roast(profile, entry, execution=None):
         "fc_time": m.get("fc_time") or None, "fc_bt": m.get("fc_bt") or None,
         "drop_bt": m.get("drop_bt") or None,
         "execution": (execution or {}).get("summary") if execution else None,
+        # Which batch of a variant set the roast ran (see schedule_variants)
+        "variant": (execution or {}).get("variant") if execution else None,
         "cupping_intake": entry.get("cupping_intake"),
         "cupping_notes": entry.get("cupping_notes") or "",
     }

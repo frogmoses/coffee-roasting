@@ -275,9 +275,17 @@ flavor loop. Fails soft: on any error the cached recs stay untouched.
 `roast_analysis.select_prior_roasts(history, roast_id, title, roast_date,
 batch_nr, limit=3)` picks earlier roasts of the same bean (title match,
 case-insensitive; ordered by (date, batch)) and compacts each to key metrics +
-prior `next_roast` advice + cupping notes. This is the incremental path toward
+prior `next_roast` advice + cupping notes (`_compact_roast`). This is the incremental path toward
 "match the roast you loved" — the model sees the dial-in sequence, not one
 roast in isolation.
+
+`select_later_roasts()` adds the later batches of the same bean from the
+same day (the rest of a contrast session), rendered as "LATER BATCHES FROM
+THE SAME SESSION" without their advice, and the system prompt says to judge
+the batch as part of the set and never advise a change a later batch already
+tried and cupped worse. Passed by `refresh_recommendations()` (cupping) and by
+scan (present on a `--force` re-scan). Added 2026-11-23 after the re-cup of
+#28 advised a 383-386F drop that #30 (379F) had already shown too roasty.
 
 ### What the model is told (`_SYSTEM_PROMPT`, `hottop_reference.py`)
 
@@ -447,7 +455,19 @@ the best-cupped roast.
 = latest version first exported before the roast's date/time (`exported.first_at`,
 kept across re-exports so correcting a version's alarm file does not unlink
 its roasts); `ROAST_BEANS_DIR` overrides the root for tests). Status: draft -> exported -> roasted ->
-cupped -> reference / superseded.
+cupped -> reference / superseded. A contrast set on the heater moves
+themselves (not the drop timer) is `contrast_lever: {key:
+"schedule_variants", why, variants: [{batch, label, change, note,
+schedule}]}`, batch 1 being the profile's own `schedule`
+(`schedule_variants()`); export writes one alarm set per batch
+(`variant_suffix`: `profile-vN-bt-batch2.alrm`, BT-only), the sheet gives
+each batch a card naming its file plus a load-before-ON step and one alarm
+table per batch, and scan judges the roast against the batch whose
+schedule its logged moves fit best (`roast_analysis.execution_for_profile`:
+fewest missed/extra, then smallest BT error), stored as
+`execution.variant` and on the profile's roast link. Burundi v2
+(2026-11-23) is the first: development fixed at 2:45, the 60% cut at 321F
+vs 340F vs an extra 50% cut at 345F.
 
 **Alarm export** (`alarm_export.py`, verified against Artisan 4.0.0
 `canvas.py`): a row fires on EITHER its time offset OR its temperature

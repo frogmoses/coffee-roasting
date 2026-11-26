@@ -85,3 +85,19 @@ def test_match_profile_by_export_time(tmp_path, monkeypatch):
     assert p2["exported"]["first_at"] == "2026-09-20T08:30:00"
     rp.mark_exported(p3, "paired", 18.0, True, [tmp_path / "x.alrm"])
     assert p3["status"] == "exported" and p3["exported"]["manual_drop"] is True
+
+
+def test_schedule_variants_and_their_alarm_suffix():
+    prof = {"contrast_lever": {"key": "schedule_variants", "variants": [
+        {"batch": 2, "label": "b", "schedule": {"moves": []}},
+        {"batch": 1, "label": "a", "schedule": {"moves": []}},
+        {"batch": 3, "label": "no schedule"}]}}
+    assert [v["batch"] for v in rp.schedule_variants(prof)] == [1, 2]
+    assert rp.schedule_variants({"contrast_lever": {"key": "dev_seconds", "values": [1, 2]}}) == []
+    assert rp.schedule_variants({}) == []
+    assert rp.variant_suffix("-bt", 2) == "-bt-batch2"
+    # a roast link records which batch of the set it ran
+    link = rp.attach_roast({"roasts": [], "status": "exported"},
+                           {"roast_id": "x", "batch_nr": 31, "metrics": {}},
+                           {"summary": "ran batch 2 (b); 6/6", "variant": {"batch": 2, "label": "b"}})
+    assert link["variant"] == {"batch": 2, "label": "b"}

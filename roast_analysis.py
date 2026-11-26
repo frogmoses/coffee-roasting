@@ -16,11 +16,37 @@ from roast_metrics import (
 from llm_recommender import generate_llm_recommendations
 from roast_narrative import build_control_timeline
 from roast_schedule import compare_execution
+from roast_profile import schedule_variants
+
+
+def execution_for_profile(profile, timeline, metrics):
+    """Designed vs executed for a roast that ran on `profile`.
+
+    A variant set (a different alarm set per batch) is judged against the
+    batch whose schedule the logged moves fit best: fewest missed and extra
+    moves, then the smallest BT error on the moves that paired up. The
+    result names that batch in `variant` and leads its summary with it.
+    """
+    env = profile.get("envelope_snapshot") or {}
+    variants = schedule_variants(profile)
+    if not variants:
+        return compare_execution(profile["schedule"], timeline, metrics, env)
+    best = None
+    for v in variants:
+        ex = compare_execution(v["schedule"], timeline, metrics, env)
+        score = (100 * (ex["missed"] + len(ex["extra"]))
+                 + sum(abs(r.get("delta_f") or 0) for r in ex["moves"]))
+        if best is None or score < best[0]:
+            best = (score, v, ex)
+    _, v, ex = best
+    ex["variant"] = {"batch": v.get("batch"), "label": v.get("label")}
+    ex["summary"] = f"ran batch {v.get('batch')} ({v.get('label')}); " + ex["summary"]
+    return ex
 
 
 def analyze_roast(data, bean_profile=None, visual_data=None,
                   cupping_notes=None, prior_roasts=None, audio_data=None,
-                  profile=None):
+                  profile=None, later_roasts=None):
     """Full analysis of a roast: metrics, recommendations, next-roast actions.
 
     Args:
@@ -32,6 +58,8 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
             fed to the LLM so it can judge intended vs actual flavor.
         prior_roasts: Optional list of compact prior-roast dicts (same bean)
             from select_prior_roasts(), giving the LLM the dial-in history.
+        later_roasts: Optional later batches of the same session, from
+            select_later_roasts() (only present on a --force re-scan).
         audio_data: Optional fc_audio dict from crack_loader.extract_audio_data()
             (the microphone's first-crack verdict).
         profile: Optional roast profile (roast_profile.py) the roast ran on;
@@ -62,8 +90,7 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
     timeline = build_control_timeline(data)
     execution, profile_ref, hypothesis = None, None, ""
     if profile:
-        execution = compare_execution(profile["schedule"], timeline, metrics,
-                                      profile.get("envelope_snapshot") or {})
+        execution = execution_for_profile(profile, timeline, metrics)
         profile_ref = {"slug": profile.get("slug"), "version": profile.get("version")}
         hypothesis = profile.get("flavor_hypothesis") or ""
 
@@ -76,6 +103,7 @@ def analyze_roast(data, bean_profile=None, visual_data=None,
         cupping_notes=effective_notes,
         warnings=data_warnings,
         prior_roasts=prior_roasts,
+        later_roasts=later_roasts,
         execution=execution, profile_ref=profile_ref, flavor_hypothesis=hypothesis,
     )
     recommendations = llm_result["recommendations"] if llm_result else []
@@ -140,29 +168,64 @@ def select_prior_roasts(history, roast_id, title, roast_date, batch_nr, limit=3)
         candidates.append((entry_key, entry))
 
     candidates.sort(key=lambda c: c[0])
+    return [_compact_roast(entry) for _, entry in candidates[-limit:]]
 
+
+def select_later_roasts(history, roast_id, title, roast_date, batch_nr):
+    """Later batches of the same bean from the same day, in roasting order.
+
+    A session is a set of batches meant to be judged together (a contrast
+    set). Each batch's analysis only sees earlier roasts, so when the cups
+    come in the first batch is judged without the later ones that answer
+    its question: after #28 the model advised a longer, darker drop that #30
+    had already tried and the operator called one step too far. These are
+    shown separately, as later batches, so the model does not read them as
+    dial-in history or advice that came before.
+
+    Returns compact dicts like select_prior_roasts(); empty if none.
+    """
+    name = (title or "").strip().lower()
+    if not name or not roast_date:
+        return []
     out = []
-    for _, entry in candidates[-limit:]:
-        metrics = entry.get("metrics", {})
-        ror = metrics.get("ror_smoothness", {}) or {}
-        out.append({
-            "batch_nr": entry.get("batch_nr", 0),
-            "roast_date": entry.get("roast_date", ""),
-            "metrics": {k: metrics.get(k, 0) for k in (
-                "total_time", "fc_time", "fc_bt", "dev_phase_time",
-                "dev_phase_pct", "drop_bt", "weight_loss_pct",
-                "heat_adjustments", "ambient_temp",
-            )},
-            "ror_severity": ror.get("severity", ""),
-            "fc_crash": ror.get("fc_crash", False),
-            "fc_flick": ror.get("fc_flick", False),
-            "ror_rising": ror.get("ror_rising", False),
-            "fc_offset": (metrics.get("fc_check") or {}).get("offset"),
-            "fc_audio_offset": (metrics.get("fc_audio") or {}).get("offset"),
-            "next_roast": entry.get("next_roast", []),
-            "cupping_notes": entry.get("cupping_notes", ""),
-        })
-    return out
+    for rid, entry in history.items():
+        if rid == roast_id:
+            continue
+        if (entry.get("title", "") or "").strip().lower() != name:
+            continue
+        if entry.get("roast_date") != roast_date:
+            continue
+        if (entry.get("batch_nr") or 0) <= (batch_nr or 0):
+            continue
+        out.append(entry)
+    out.sort(key=lambda e: e.get("batch_nr") or 0)
+    return [_compact_roast(e) for e in out]
+
+
+def _compact_roast(entry):
+    """One roast of the bean compacted for the prompt: key facts, the advice
+    given after it, and how it cupped."""
+    metrics = entry.get("metrics", {})
+    ror = metrics.get("ror_smoothness", {}) or {}
+    return {
+        "batch_nr": entry.get("batch_nr", 0),
+        "roast_date": entry.get("roast_date", ""),
+        "metrics": {k: metrics.get(k, 0) for k in (
+            "total_time", "fc_time", "fc_bt", "dev_phase_time",
+            "dev_phase_pct", "drop_bt", "weight_loss_pct",
+            "heat_adjustments", "ambient_temp",
+        )},
+        "ror_severity": ror.get("severity", ""),
+        "fc_crash": ror.get("fc_crash", False),
+        "fc_flick": ror.get("fc_flick", False),
+        "ror_rising": ror.get("ror_rising", False),
+        "fc_offset": (metrics.get("fc_check") or {}).get("offset"),
+        "fc_audio_offset": (metrics.get("fc_audio") or {}).get("offset"),
+        "next_roast": entry.get("next_roast", []),
+        "cupping_notes": entry.get("cupping_notes", ""),
+        # Which batch of a variant set it ran, when the profile had one
+        "variant": (entry.get("execution") or {}).get("variant"),
+    }
 
 
 def refresh_recommendations(analysis, history):
@@ -198,6 +261,14 @@ def refresh_recommendations(analysis, history):
         analysis.get("roast_date", ""),
         analysis.get("batch_nr", 0),
     )
+    # The rest of the session: its cups answer questions this batch raises
+    later_roasts = select_later_roasts(
+        history,
+        analysis.get("roast_id", ""),
+        analysis.get("title", ""),
+        analysis.get("roast_date", ""),
+        analysis.get("batch_nr", 0),
+    )
     hypothesis = ""
     ref = analysis.get("profile_ref")
     if ref:
@@ -209,6 +280,7 @@ def refresh_recommendations(analysis, history):
         cupping_notes=analysis.get("cupping_notes", ""),
         warnings=analysis.get("warnings", []),
         prior_roasts=prior_roasts,
+        later_roasts=later_roasts,
         execution=analysis.get("execution"), profile_ref=ref,
         flavor_hypothesis=hypothesis,
     )

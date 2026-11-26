@@ -18,7 +18,7 @@ import html
 from datetime import datetime
 
 from roast_schedule import schedule_rows, fmt_mmss, project_drop_bt
-from roast_profile import sheet_path, profile_dir
+from roast_profile import sheet_path, profile_dir, schedule_variants
 from alarm_export import describe_rows
 from roast_metrics import SAFETY_EJECT_BT
 
@@ -247,11 +247,33 @@ def _fan_batches(profile, envelope, values):
     return cards
 
 
-def batches_from_profile(profile, envelope):
+def _variant_batches(profile, envelope, variants, batch_rows=None):
+    """A heater-move bracket: one card per batch with its own alarm set, all
+    at the same development, in the variants' batch order (batch 1 is the
+    control, roasted while the drum is coldest)."""
+    cards = []
+    for v in variants:
+        sched = v["schedule"]
+        dev = int(sched.get("drop", {}).get("seconds", 150))
+        drop_bt = project_drop_bt(sched, envelope)
+        alarm_file = (batch_rows or {}).get(v.get("batch"), (None, None))[0]
+        cards.append({"order": v.get("batch"), "dev_s": dev, "label": v.get("label", ""),
+                      "change": v.get("change", ""), "note": v.get("note", ""),
+                      "alarm_file": alarm_file, "drop_bt": round(drop_bt),
+                      "margin": round(SAFETY_EJECT_BT - drop_bt)})
+    return cards
+
+
+def batches_from_profile(profile, envelope, batch_rows=None):
     """The contrast set as cards: the design's own value first, then the
     short and long ends (same order roast_plan uses, so batch 1 is roasted
     under the same cold-drum state as every earlier first-of-day batch).
-    A `fan_after_fc` lever gives fan cards instead (see `_fan_batches`)."""
+    A `fan_after_fc` lever gives fan cards instead (see `_fan_batches`), a
+    `schedule_variants` lever one card per alarm set (`_variant_batches`;
+    `batch_rows` maps batch -> (alarm file name, rows))."""
+    variants = schedule_variants(profile)
+    if variants:
+        return _variant_batches(profile, envelope, variants, batch_rows)
     lever = profile.get("contrast_lever") or {}
     sched = profile.get("schedule", {})
     dev = int(sched.get("drop", {}).get("seconds", 150))
@@ -309,8 +331,10 @@ def _grouped_warnings(warnings):
     return [(", ".join(grouped[k]) + ": " + k) if grouped[k] else k for k in order]
 
 
-def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alarm_file=None):
-    """The sheet as an HTML string."""
+def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alarm_file=None,
+                 batch_rows=None):
+    """The sheet as an HTML string. `batch_rows` ({batch: (file, rows)})
+    is given for a variant set, where every batch loads its own alarm set."""
     sched = profile.get("schedule", {})
     bean = profile.get("bean", "?")
     version = profile.get("version", "?")
@@ -323,7 +347,9 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     latency = 0 if manual_drop else (exported.get("ear_latency_s") or (envelope or {}).get("ear_latency_s") or 0)
     mode = exported.get("mode") or "paired"
     dev = int(sched.get("drop", {}).get("seconds", 150))
-    batches = batches if batches is not None else batches_from_profile(profile, envelope)
+    batches = batches if batches is not None else batches_from_profile(profile, envelope, batch_rows)
+    # A variant set: each batch loads its own alarm set before its ON
+    per_batch = bool(batch_rows) and len(batch_rows) > 1
     warm = (sched.get("charge") or {}).get("warmup") or {}
     has_warmup_rows = any(r.get("from") == 9 for r in (alarm_rows or []))
     rows = schedule_rows(sched, envelope)
@@ -355,7 +381,9 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         a(f"<span>{_e(whose)} <b>{_e(fmt_mmss(stats['fc_time_min']))} to {_e(fmt_mmss(stats['fc_time_max']))}</b> over {stats['count']} roasts</span>")
     a(f"<span>Development <b>FC + {_e(fmt_mmss(dev))}</b>, drop ~{_e(pred.get('drop_bt', '?'))}F</span>")
     a(f"<span>Safety eject <b>{SAFETY_EJECT_BT}F</b></span>")
-    if alarm_file:
+    if per_batch:
+        a(f"<span>Alarm sets <b>one per batch</b>, batch 1 is <b>{_e(alarm_file)}</b></span>")
+    elif alarm_file:
         a(f"<span>Alarm set <b>{_e(alarm_file)}</b></span>")
     if borrowed_from:
         a(f"<span>First roast of this bean: times come from your <b>{_e(borrowed_from)}</b> roasts</span>")
@@ -371,7 +399,10 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
       "snap your fingers by the capsule and the cracks column climbs. Adjust the capture gain in <code>alsamixer -c 1</code> until it does.</li>")
     a(f"<li>Start the ear on the roaster: <code>run_ear ear.py listen --bean \"{_e(bean)}\"</code>. One listen covers the day.</li>")
     a(f"<li>Name the roast in Artisan (<strong>{_e(bean)}</strong>) before you press ON, so the batch groups with its bean.</li>")
-    if alarm_file:
+    if per_batch:
+        a(f"<li>Config &rarr; Alarms &rarr; Load batch 1's set, <code>{_e(alarm_file)}</code>. <strong>Every batch today has its own alarm set</strong> "
+          "(named on its card below); check each against its table at the end of this sheet.</li>")
+    elif alarm_file:
         a(f"<li>Config &rarr; Alarms &rarr; Load <code>{_e(alarm_file)}</code>. Check it against the alarm table at the end of this sheet.</li>")
     if has_warmup_rows:
         a("<li>ON. The first alarm row takes Hottop control (super-user comes with it) and starts the drum; the next closes the door, stops the stirrer, "
@@ -393,13 +424,17 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     a("<li><strong>DROP is the panic button.</strong> Never OFF during a roast: with recording off no alarm evaluates, the 398F drop included, "
       "and the heater stays where it was.</li>")
     a("<li>Between batches, in this order: DROP; <strong>COOL END</strong> (always, before OFF: it closes the door and stops the drum, fan, and stirrer; "
-      "after OFF nothing will); OFF; <strong>save the log</strong> (the ear waits for that save before it can start the next batch's session); then ON. "
-      "The warm-up repeats on its own.</li>")
+      "after OFF nothing will); OFF; <strong>save the log</strong> (the ear waits for that save before it can start the next batch's session); "
+      + ("<strong>load the next batch's alarm set</strong> (Config &rarr; Alarms &rarr; Load, the file on its card); " if per_batch else "")
+      + "then ON. The warm-up repeats on its own.</li>")
     a("</ol></section>")
 
     # -- schedule
     a("<section>")
-    a('<div class="section-head"><div class="eyebrow">Schedule</div><h2>Every batch, from charge to first crack</h2></div>')
+    if per_batch:
+        a('<div class="section-head"><div class="eyebrow">Schedule</div><h2>Batch 1, from charge to first crack; the others change only the moves on their cards</h2></div>')
+    else:
+        a('<div class="section-head"><div class="eyebrow">Schedule</div><h2>Every batch, from charge to first crack</h2></div>')
     a('<div class="tablewrap"><table><thead><tr><th>When</th><th class="num">Expect BT</th><th>Move</th><th>Trigger</th><th>Why</th></tr></thead><tbody>')
     for r in rows:
         cls = ' class="fc"' if r["phase"] == "drop" else ""
@@ -422,9 +457,20 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
 
     # -- batches
     a("<section>")
-    a('<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>The planned development first, then a shorter and a longer one</h2></div>')
+    if any(c.get("change") for c in batches):
+        a('<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>The same development every batch; only the heater moves change</h2></div>')
+    else:
+        a('<div class="section-head"><div class="eyebrow">The batches, in roasting order</div><h2>The planned development first, then a shorter and a longer one</h2></div>')
     a('<div class="cards">')
     for c in batches:
+        if c.get("change"):
+            warn = ' warn' if c["margin"] < 10 else ""
+            a(f'<div class="card{warn}"><div class="eyebrow">Batch {c["order"]} &middot; {_e(c["label"])}</div>'
+              f'<div class="big" style="font-size:1.15rem">{_e(c["change"])}</div>'
+              f'<div>FC + {_e(fmt_mmss(c["dev_s"]))} <small>({c["dev_s"]} s), drop ~{c["drop_bt"]}F</small></div>'
+              + (f'<div>Load <code>{_e(c["alarm_file"])}</code></div>' if c.get("alarm_file") else "")
+              + f'<div class="note">{_e(c["note"])}' + (" If BT reaches 400F before the timer, drop." if c["margin"] < 15 else "") + "</div></div>")
+            continue
         warn = ' warn' if c["margin"] < 10 else ""
         a(f'<div class="card{warn}"><div class="eyebrow">Batch {c["order"]} &middot; {_e(c["label"])}</div>'
           f'<div class="big">FC + {_e(fmt_mmss(c["dev_s"]))} <small>{c["dev_s"]} s &middot; drop ~{c["drop_bt"]}F</small></div>'
@@ -467,7 +513,8 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     a("<section>")
     a('<div class="section-head"><div class="eyebrow">At the table</div><h2>Taste for difference, not for words</h2></div>')
     a('<ol class="steps">')
-    a("<li><strong>Rest 3 to 5 days</strong> before judging. At 24 hours every batch tastes flat and gassy in the Switch.</li>")
+    a("<li><strong>Rest about a week</strong> before judging. At one day the Burundi batches read sour, thin, or drying; "
+      "at seven days the same cups were balanced and clean.</li>")
     a("<li>Brew all batches in the Hario Switch the same way, back to back, cups labeled by batch number only. Recipe: <strong>15 g</strong> medium grind, "
       "<strong>250 g at 94°C</strong>, switch closed; pour 50 g and swirl at 0:00, fill to 250 g at 0:45, open the switch at 2:00, drained by about 3:00. "
       "Hot water throughout: no cool second pour, since that hides the roasty end of the scale.</li>")
@@ -500,7 +547,17 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     a("<pre>" + _e("\n".join(cmds)) + "</pre>")
     a("</section>")
     # -- what Artisan does on its own
-    if alarm_rows:
+    if per_batch:
+        a('<section class="appendix">')
+        a('<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>Each batch&rsquo;s alarm table, row by row, to check what you loaded</h2></div>')
+        for batch in sorted(batch_rows):
+            fname, brows = batch_rows[batch]
+            a(f"<h3>Batch {_e(batch)}: {_e(fname)}</h3>")
+            a("<pre>" + _e("\n".join(describe_rows(brows))) + "</pre>")
+        a("<p class=\"a\" style=\"color: var(--ink-2)\">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. "
+          "A row with both a BT and a time fires on whichever comes first.</p>")
+        a("</section>")
+    elif alarm_rows:
         a('<section class="appendix">')
         a('<div class="section-head"><div class="eyebrow">What Artisan does on its own</div><h2>The alarm table, row by row, to check what you loaded</h2></div>')
         a("<pre>" + _e("\n".join(describe_rows(alarm_rows))) + "</pre>")

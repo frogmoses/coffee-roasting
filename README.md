@@ -191,6 +191,13 @@ three batches get the same cuts at the same bean temperature whatever the
 drum's heat-soak does to the clock; the paired rows with clock fallbacks
 are for single-batch days.
 
+A contrast set can also vary the heater moves themselves (a cut at another
+temperature, an extra cut) instead of the development time. Then each batch
+has its own alarm set, `profile-vN-bt-batch1.alrm`, `-batch2`, and so on,
+named on its card on the sheet: load batch 1's before the first ON, and the
+next batch's after each save, before ON. Scan works out which batch a roast
+ran from its logged moves and records it on the profile.
+
 Leave the ear running all day. Between batches the routine is DROP, COOL
 END, OFF, save, ON, and the ear rolls into a fresh session after each
 finished roast. If you do restart Artisan and the Hottop between batches
@@ -251,7 +258,8 @@ Ear commands run on the roaster as `run_ear ear.py <command>`:
 
 **Recommendations** come from Claude reading the whole log: every heater and fan
 move, the bean-temperature curve, anything you flagged in Artisan, up to three
-earlier roasts of the same bean, and your tasting notes. They name the dial and
+earlier roasts of the same bean, the later batches of the same day (a contrast
+set is judged as a set once its cups are in), and your tasting notes. They name the dial and
 the moment. Priorities: `[!!!]` fix first, `[ ! ]` worth improving, `[   ]` info.
 
 **Phase Breakdown** shows each phase's time and rate of rise beside its

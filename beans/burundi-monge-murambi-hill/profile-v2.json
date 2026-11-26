@@ -1,0 +1,828 @@
+{
+  "slug": "burundi-monge-murambi-hill",
+  "bean": "Burundi Monge Murambi Hill",
+  "version": 2,
+  "created_at": "2026-11-23T14:59:07",
+  "designer": {
+    "model": null,
+    "status": "by hand",
+    "repair_rounds": 0
+  },
+  "based_on": {
+    "kind": "revision",
+    "version": 1,
+    "by": "hand"
+  },
+  "schedule": {
+    "schedule_version": 1,
+    "charge": {
+      "bt": 300,
+      "heater": 100,
+      "fan": 0,
+      "why": "The usual warm-up and charge on this machine: heater 100%, fan 0%, as for every Rwanda roast.",
+      "warmup": {
+        "preheat_bt": 370,
+        "cool_heater": 0,
+        "cool_fan": 100,
+        "charge_bt": 300
+      }
+    },
+    "moves": [
+      {
+        "id": "f10",
+        "trigger": {
+          "after": "CHARGE",
+          "seconds": 15
+        },
+        "action": "fan",
+        "value": 10,
+        "why": "Gentle airflow early, to clear chaff while the beans fall to the turning point.",
+        "expect": {
+          "bt": 237
+        }
+      },
+      {
+        "id": "f20",
+        "trigger": {
+          "after": "CHARGE",
+          "seconds": 90
+        },
+        "action": "fan",
+        "value": 20,
+        "why": "More airflow just after the turning point, for convection without stalling the climb.",
+        "expect": {
+          "bt": 162
+        }
+      },
+      {
+        "id": "h90",
+        "trigger": {
+          "bt": 262
+        },
+        "action": "heater",
+        "value": 90,
+        "why": "First easing of heat as browning begins. It fires on bean temperature, so it lands right even if this bean runs earlier or later than the Rwanda did.",
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 296
+        }
+      },
+      {
+        "id": "h80",
+        "trigger": {
+          "bt": 281
+        },
+        "action": "heater",
+        "value": 80,
+        "why": "Keeps the climb steady through browning.",
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 346
+        }
+      },
+      {
+        "id": "h70",
+        "trigger": {
+          "bt": 303
+        },
+        "action": "heater",
+        "value": 70,
+        "why": "Eases the rate of rise as drying ends, so browning lasts longer.",
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 438
+        }
+      },
+      {
+        "id": "h60",
+        "trigger": {
+          "bt": 321
+        },
+        "action": "heater",
+        "value": 60,
+        "why": "Last cut, so the rate of rise settles into first crack; 60% still carries enough heat through the crack.",
+        "expect": {
+          "after": "CHARGE",
+          "seconds": 511
+        }
+      }
+    ],
+    "post_fc": [],
+    "drop": {
+      "after": "FCs",
+      "seconds": 165
+    },
+    "guards": {
+      "bt_ceiling": 398,
+      "fc_min_bt": 350,
+      "fc_popup_bt": 356
+    },
+    "predicted": {
+      "fc_time_s": 691,
+      "fc_bt": 358,
+      "drop_bt": 375,
+      "confidence": "measured"
+    },
+    "changes_from_baseline": [
+      {
+        "what": "dev seconds",
+        "kind": "dev",
+        "from": 152,
+        "to": 165
+      }
+    ]
+  },
+  "predicted": {
+    "fc_time_s": 691,
+    "fc_bt": 358,
+    "drop_bt": 375,
+    "confidence": "measured"
+  },
+  "flavor_hypothesis": "Balanced and clean like #28, with more sweetness and a fuller body from one of the two heat changes",
+  "contrast_lever": {
+    "key": "schedule_variants",
+    "why": "v1's three batches changed only the development time, and sweetness stayed at none or a hint on every batch (as on all ten batches since September, every one on the same heater schedule). Development is now fixed at #28's 2:45; these three batches change the late heat in both directions, so the one you prefer shows which way to go. Each batch has its own alarm set.",
+    "variants": [
+      {
+        "batch": 1,
+        "label": "control",
+        "change": "As v1: heater 60% at 321F",
+        "note": "The #28 roast again at 2:45. Roasted first, while the drum is coldest; the other two are judged against it.",
+        "schedule": {
+          "schedule_version": 1,
+          "charge": {
+            "bt": 300,
+            "heater": 100,
+            "fan": 0,
+            "why": "The usual warm-up and charge on this machine: heater 100%, fan 0%, as for every Rwanda roast.",
+            "warmup": {
+              "preheat_bt": 370,
+              "cool_heater": 0,
+              "cool_fan": 100,
+              "charge_bt": 300
+            }
+          },
+          "moves": [
+            {
+              "id": "f10",
+              "trigger": {
+                "after": "CHARGE",
+                "seconds": 15
+              },
+              "action": "fan",
+              "value": 10,
+              "why": "Gentle airflow early, to clear chaff while the beans fall to the turning point.",
+              "expect": {
+                "bt": 237
+              }
+            },
+            {
+              "id": "f20",
+              "trigger": {
+                "after": "CHARGE",
+                "seconds": 90
+              },
+              "action": "fan",
+              "value": 20,
+              "why": "More airflow just after the turning point, for convection without stalling the climb.",
+              "expect": {
+                "bt": 162
+              }
+            },
+            {
+              "id": "h90",
+              "trigger": {
+                "bt": 262
+              },
+              "action": "heater",
+              "value": 90,
+              "why": "First easing of heat as browning begins. It fires on bean temperature, so it lands right even if this bean runs earlier or later than the Rwanda did.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 296
+              }
+            },
+            {
+              "id": "h80",
+              "trigger": {
+                "bt": 281
+              },
+              "action": "heater",
+              "value": 80,
+              "why": "Keeps the climb steady through browning.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 346
+              }
+            },
+            {
+              "id": "h70",
+              "trigger": {
+                "bt": 303
+              },
+              "action": "heater",
+              "value": 70,
+              "why": "Eases the rate of rise as drying ends, so browning lasts longer.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 438
+              }
+            },
+            {
+              "id": "h60",
+              "trigger": {
+                "bt": 321
+              },
+              "action": "heater",
+              "value": 60,
+              "why": "Last cut, so the rate of rise settles into first crack; 60% still carries enough heat through the crack.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 511
+              }
+            }
+          ],
+          "post_fc": [],
+          "drop": {
+            "after": "FCs",
+            "seconds": 165
+          },
+          "guards": {
+            "bt_ceiling": 398,
+            "fc_min_bt": 350,
+            "fc_popup_bt": 356
+          },
+          "predicted": {
+            "fc_time_s": 691,
+            "fc_bt": 358,
+            "drop_bt": 375,
+            "confidence": "measured"
+          },
+          "changes_from_baseline": [
+            {
+              "what": "dev seconds",
+              "kind": "dev",
+              "from": 152,
+              "to": 165
+            }
+          ]
+        }
+      },
+      {
+        "batch": 2,
+        "label": "more late heat",
+        "change": "Heater stays 70% until 340F, then 60%",
+        "note": "More heat late in the browning stage. Expect first crack sooner, fuller body, maybe more sweetness; if it tastes roastier at the same development, the extra heat went to the wrong place.",
+        "schedule": {
+          "schedule_version": 1,
+          "charge": {
+            "bt": 300,
+            "heater": 100,
+            "fan": 0,
+            "why": "The usual warm-up and charge on this machine: heater 100%, fan 0%, as for every Rwanda roast.",
+            "warmup": {
+              "preheat_bt": 370,
+              "cool_heater": 0,
+              "cool_fan": 100,
+              "charge_bt": 300
+            }
+          },
+          "moves": [
+            {
+              "id": "f10",
+              "trigger": {
+                "after": "CHARGE",
+                "seconds": 15
+              },
+              "action": "fan",
+              "value": 10,
+              "why": "Gentle airflow early, to clear chaff while the beans fall to the turning point.",
+              "expect": {
+                "bt": 237
+              }
+            },
+            {
+              "id": "f20",
+              "trigger": {
+                "after": "CHARGE",
+                "seconds": 90
+              },
+              "action": "fan",
+              "value": 20,
+              "why": "More airflow just after the turning point, for convection without stalling the climb.",
+              "expect": {
+                "bt": 162
+              }
+            },
+            {
+              "id": "h90",
+              "trigger": {
+                "bt": 262
+              },
+              "action": "heater",
+              "value": 90,
+              "why": "First easing of heat as browning begins. It fires on bean temperature, so it lands right even if this bean runs earlier or later than the Rwanda did.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 296
+              }
+            },
+            {
+              "id": "h80",
+              "trigger": {
+                "bt": 281
+              },
+              "action": "heater",
+              "value": 80,
+              "why": "Keeps the climb steady through browning.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 346
+              }
+            },
+            {
+              "id": "h70",
+              "trigger": {
+                "bt": 303
+              },
+              "action": "heater",
+              "value": 70,
+              "why": "Eases the rate of rise as drying ends, so browning lasts longer.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 438
+              }
+            },
+            {
+              "id": "h60",
+              "trigger": {
+                "bt": 340
+              },
+              "action": "heater",
+              "value": 60,
+              "why": "Batch 2: the last cut moved from 321F to 340F, so the beans get 70% for most of the browning stage: the usual lever for body and sweetness.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 597
+              }
+            }
+          ],
+          "post_fc": [],
+          "drop": {
+            "after": "FCs",
+            "seconds": 165
+          },
+          "guards": {
+            "bt_ceiling": 398,
+            "fc_min_bt": 350,
+            "fc_popup_bt": 356
+          },
+          "predicted": {
+            "fc_time_s": 691,
+            "fc_bt": 358,
+            "drop_bt": 375,
+            "confidence": "measured"
+          },
+          "changes_from_baseline": [
+            {
+              "what": "heater 60% BT",
+              "kind": "bt",
+              "from": 321,
+              "to": 340
+            },
+            {
+              "what": "dev seconds",
+              "kind": "dev",
+              "from": 152,
+              "to": 165
+            }
+          ]
+        }
+      },
+      {
+        "batch": 3,
+        "label": "less heat into the crack",
+        "change": "As v1, plus heater 50% at 345F",
+        "note": "Less heat into first crack, to flatten the late surge in the rise. Expect first crack later and a cleaner, lighter finish; if it tastes flat or thin, the surge was not the problem.",
+        "schedule": {
+          "schedule_version": 1,
+          "charge": {
+            "bt": 300,
+            "heater": 100,
+            "fan": 0,
+            "why": "The usual warm-up and charge on this machine: heater 100%, fan 0%, as for every Rwanda roast.",
+            "warmup": {
+              "preheat_bt": 370,
+              "cool_heater": 0,
+              "cool_fan": 100,
+              "charge_bt": 300
+            }
+          },
+          "moves": [
+            {
+              "id": "f10",
+              "trigger": {
+                "after": "CHARGE",
+                "seconds": 15
+              },
+              "action": "fan",
+              "value": 10,
+              "why": "Gentle airflow early, to clear chaff while the beans fall to the turning point.",
+              "expect": {
+                "bt": 237
+              }
+            },
+            {
+              "id": "f20",
+              "trigger": {
+                "after": "CHARGE",
+                "seconds": 90
+              },
+              "action": "fan",
+              "value": 20,
+              "why": "More airflow just after the turning point, for convection without stalling the climb.",
+              "expect": {
+                "bt": 162
+              }
+            },
+            {
+              "id": "h90",
+              "trigger": {
+                "bt": 262
+              },
+              "action": "heater",
+              "value": 90,
+              "why": "First easing of heat as browning begins. It fires on bean temperature, so it lands right even if this bean runs earlier or later than the Rwanda did.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 296
+              }
+            },
+            {
+              "id": "h80",
+              "trigger": {
+                "bt": 281
+              },
+              "action": "heater",
+              "value": 80,
+              "why": "Keeps the climb steady through browning.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 346
+              }
+            },
+            {
+              "id": "h70",
+              "trigger": {
+                "bt": 303
+              },
+              "action": "heater",
+              "value": 70,
+              "why": "Eases the rate of rise as drying ends, so browning lasts longer.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 438
+              }
+            },
+            {
+              "id": "h60",
+              "trigger": {
+                "bt": 321
+              },
+              "action": "heater",
+              "value": 60,
+              "why": "Last cut, so the rate of rise settles into first crack; 60% still carries enough heat through the crack.",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 511
+              }
+            },
+            {
+              "id": "h50",
+              "trigger": {
+                "bt": 345
+              },
+              "action": "heater",
+              "value": 50,
+              "why": "Batch 3: one more cut just before first crack, so the rate of rise does not surge back up a minute after the crack (seen in #28-#30).",
+              "expect": {
+                "after": "CHARGE",
+                "seconds": 621
+              }
+            }
+          ],
+          "post_fc": [],
+          "drop": {
+            "after": "FCs",
+            "seconds": 165
+          },
+          "guards": {
+            "bt_ceiling": 398,
+            "fc_min_bt": 350,
+            "fc_popup_bt": 356
+          },
+          "predicted": {
+            "fc_time_s": 691,
+            "fc_bt": 358,
+            "drop_bt": 375,
+            "confidence": "measured"
+          },
+          "changes_from_baseline": [
+            {
+              "what": "heater 50%",
+              "kind": "added",
+              "from": null,
+              "to": 50
+            },
+            {
+              "what": "dev seconds",
+              "kind": "dev",
+              "from": 152,
+              "to": 165
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "changes_from_baseline": [
+    {
+      "what": "development",
+      "from": "2:32 (bracket 2:00 / 2:32 / 3:00)",
+      "to": "2:45, every batch",
+      "why": "#28 (2:48) cupped best; #30 (3:00) was one step too far; #29 (2:06) under-developed"
+    },
+    {
+      "what": "batch 2",
+      "from": "heater 60% at 321F",
+      "to": "heater 60% at 340F",
+      "why": "more heat late in the browning stage, for body and sweetness"
+    },
+    {
+      "what": "batch 3",
+      "from": "no cut after 60%",
+      "to": "heater 50% at 345F",
+      "why": "less heat into the crack, to stop the late surge in rise"
+    }
+  ],
+  "validator": {
+    "errors": [],
+    "warnings": [
+      "Heater 90% at 262F: a single 10% heater step barely shows in the rate of rise for about 2 minutes",
+      "Heater 80% at 281F: a single 10% heater step barely shows in the rate of rise for about 2 minutes",
+      "Heater 80% at 281F: comes 50 s after the previous heater cut; closer than 60 s apart, two cuts act like one gradual cut",
+      "Heater 70% at 303F: a single 10% heater step barely shows in the rate of rise for about 2 minutes",
+      "Heater 60% at 321F: a single 10% heater step barely shows in the rate of rise for about 2 minutes"
+    ],
+    "clamped": []
+  },
+  "envelope_snapshot": {
+    "bean": "Burundi Monge Murambi Hill",
+    "count": 3,
+    "source_roasts": [
+      "28_Burundi Monge Murambi Hill_2026-11-14",
+      "29_Burundi Monge Murambi Hill_2026-11-14",
+      "30_Burundi Monge Murambi Hill_2026-11-14"
+    ],
+    "staircase": {
+      "start": {
+        "heater": 100.0,
+        "fan": null
+      },
+      "moves": [
+        {
+          "control": "fan",
+          "value": 10,
+          "median_time": 16.0,
+          "median_bt": 230.0,
+          "n": 3
+        },
+        {
+          "control": "fan",
+          "value": 20,
+          "median_time": 90.0,
+          "median_bt": 161.6,
+          "n": 3
+        },
+        {
+          "control": "heater",
+          "value": 90,
+          "median_time": 308.0,
+          "median_bt": 262.4,
+          "n": 3
+        },
+        {
+          "control": "heater",
+          "value": 80,
+          "median_time": 360.0,
+          "median_bt": 282.2,
+          "n": 3
+        },
+        {
+          "control": "heater",
+          "value": 70,
+          "median_time": 432.0,
+          "median_bt": 303.8,
+          "n": 3
+        },
+        {
+          "control": "heater",
+          "value": 60,
+          "median_time": 502.0,
+          "median_bt": 321.8,
+          "n": 3
+        }
+      ]
+    },
+    "median_curve": [
+      {
+        "time": 0,
+        "bt": 300.7
+      },
+      {
+        "time": 60,
+        "bt": 151.2
+      },
+      {
+        "time": 120,
+        "bt": 179.2
+      },
+      {
+        "time": 180,
+        "bt": 209.5
+      },
+      {
+        "time": 240,
+        "bt": 238.1
+      },
+      {
+        "time": 300,
+        "bt": 263.7
+      },
+      {
+        "time": 360,
+        "bt": 286.5
+      },
+      {
+        "time": 420,
+        "bt": 299.8
+      },
+      {
+        "time": 480,
+        "bt": 314.0
+      },
+      {
+        "time": 540,
+        "bt": 326.8
+      },
+      {
+        "time": 600,
+        "bt": 340.8
+      },
+      {
+        "time": 660,
+        "bt": 351.7
+      },
+      {
+        "time": 720,
+        "bt": 359.6
+      },
+      {
+        "time": 780,
+        "bt": 363.6
+      },
+      {
+        "time": 840,
+        "bt": 372.9
+      }
+    ],
+    "charge_bt": 301.4,
+    "tp_bt": 150.8,
+    "tp_time": 62.0,
+    "dry_time": 418.0,
+    "fc_stats": {
+      "count": 3,
+      "fc_time_mean": 690.6666666666666,
+      "fc_time_sd": 4.714045207910317,
+      "fc_time_min": 684.0,
+      "fc_time_max": 694.0,
+      "fc_bt_mean": 358.0,
+      "post_fc_rise": 6.219047619047622,
+      "post_fc_rise_measured": true
+    },
+    "fc_time": 690.6666666666666,
+    "fc_bt": 358.0,
+    "ror_at_fc": 9.6,
+    "heat_soak_shift": -5.0,
+    "ambient": [
+      {
+        "date": "2026-11-14",
+        "batch": 28,
+        "ambient_temp": 59.0,
+        "fc_time": 694.0
+      },
+      {
+        "date": "2026-11-14",
+        "batch": 29,
+        "ambient_temp": 59.0,
+        "fc_time": 694.0
+      },
+      {
+        "date": "2026-11-14",
+        "batch": 30,
+        "ambient_temp": 59.0,
+        "fc_time": 684.0
+      }
+    ],
+    "dev_history": [
+      {
+        "batch": 28,
+        "date": "2026-11-14",
+        "dev_s": 168.0,
+        "dev_s_corrected": 222.0,
+        "dev_source": "curve",
+        "mark_suspect": true,
+        "fc_bt": 357.8,
+        "drop_bt": 375.8,
+        "fc_time": 694.0,
+        "ambient_temp": 59.0,
+        "balance": 0,
+        "astringency": 0,
+        "sweetness": 0,
+        "body": 0,
+        "preference": "na",
+        "drink_again": "meh",
+        "notes": "Brewed as Hario Switch 7 days after roast. Balance: balanced, neither stands out",
+        "cupped": true
+      },
+      {
+        "batch": 29,
+        "date": "2026-11-14",
+        "dev_s": 126.0,
+        "dev_s_corrected": 126.0,
+        "dev_source": "mark",
+        "mark_suspect": false,
+        "fc_bt": 357.2,
+        "drop_bt": 368.6,
+        "fc_time": 694.0,
+        "ambient_temp": 59.0,
+        "balance": 0,
+        "astringency": 0,
+        "sweetness": 0,
+        "body": 0,
+        "preference": "worse",
+        "drink_again": "meh",
+        "notes": "Brewed as Hario Switch 7 days after roast. Balance: balanced, neither stands out",
+        "cupped": true
+      },
+      {
+        "batch": 30,
+        "date": "2026-11-14",
+        "dev_s": 180.0,
+        "dev_s_corrected": 180.0,
+        "dev_source": "mark",
+        "mark_suspect": false,
+        "fc_bt": 359.0,
+        "drop_bt": 379.4,
+        "fc_time": 684.0,
+        "ambient_temp": 59.0,
+        "balance": 1,
+        "astringency": 0,
+        "sweetness": 0,
+        "body": 0,
+        "preference": "same",
+        "drink_again": "meh",
+        "notes": "Brewed as Hario Switch 7 days after roast. Balance: a little roasty or bitter. A",
+        "cupped": true
+      }
+    ],
+    "ear_latency_s": 17.9,
+    "ear_latency_n": 6,
+    "borrowed_from": null
+  },
+  "watch_for": [
+    "First crack near 11:30 on the control. Batch 2 should crack sooner (more heat), batch 3 a little later. Time each drop from your FCs mark, not the clock.",
+    "Batch 2's 60% cut should land near 340F, around 10:00, and batch 3's 50% cut near 345F, around 10:20. If a cut does not show in the log at its temperature, the wrong alarm set was loaded.",
+    "Each batch needs its own alarm set loaded after the save and before ON; the From-ON rows fire at ON.",
+    "Every batch drops near 375F. Batch 2 may run a few degrees higher at the same 2:45."
+  ],
+  "exported": {
+    "at": "2026-11-23T14:59:07",
+    "first_at": "2026-11-23T14:59:07",
+    "mode": "bt",
+    "ear_latency_s": 0.0,
+    "manual_drop": true,
+    "files": [
+      "/home/brian/CodeProjects/coffee-roasting/beans/burundi-monge-murambi-hill/alarms/profile-v2-bt-batch1.alrm",
+      "/home/brian/CodeProjects/coffee-roasting/beans/burundi-monge-murambi-hill/alarms/profile-v2-bt-batch2.alrm",
+      "/home/brian/CodeProjects/coffee-roasting/beans/burundi-monge-murambi-hill/alarms/profile-v2-bt-batch3.alrm"
+    ]
+  },
+  "roasts": [],
+  "status": "exported",
+  "rationale": "Development is settled at 2:45 after first crack, the #28 roast. The next question is the heat before first crack: v1's schedule cuts to 60% at 321F, leaving about 3 1/2 minutes at the lowest heat on a slow, cold day.",
+  "roast_level_target": "City+",
+  "notes": [
+    "2026-11-23: designed by hand from the v1 session (#28-#30, re-cupped at 7 days on the Switch): development fixed at 2:45, bracket on the late heater moves, one alarm set per batch."
+  ]
+}

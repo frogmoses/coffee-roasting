@@ -203,3 +203,46 @@ def test_schedule_rows_and_summary_render():
     assert rows[-1]["when"] == "FC+2:30"
     assert rs.staircase_summary(sched) == "charge H100/F0 F10@0:15 F20@1:30 H80@262F H60@303F DROP@FC+150s"
     json.dumps(sched)                                       # JSON-clean
+
+
+def _variant_profile():
+    """A heater-move bracket: the control, its 60% cut moved later, and the
+    control plus an extra 50% cut (one alarm set per batch)."""
+    env = _envelope()
+    control = rs.validate_schedule(_schedule(), env)["schedule"]
+    later = copy.deepcopy(control)
+    for mv in later["moves"]:
+        if mv["id"] == "h60":
+            mv["trigger"] = {"bt": 330}
+            mv.pop("expect", None)
+    later = rs.validate_schedule(later, env)["schedule"]
+    extra = copy.deepcopy(control)
+    extra["moves"].append({"id": "h50", "trigger": {"bt": 340}, "action": "heater", "value": 50})
+    extra = rs.validate_schedule(extra, env)["schedule"]
+    variants = [{"batch": 1, "label": "control", "schedule": control},
+                {"batch": 2, "label": "later cut", "schedule": later},
+                {"batch": 3, "label": "extra cut", "schedule": extra}]
+    return {"slug": "t", "version": 2, "schedule": control, "envelope_snapshot": env,
+            "contrast_lever": {"key": "schedule_variants", "variants": variants}}
+
+
+def test_execution_picks_the_batch_whose_schedule_the_roast_ran():
+    from roast_analysis import execution_for_profile
+    prof = _variant_profile()
+    metrics = {"fc_time": 660.0, "fc_bt": 361.0, "drop_bt": 384.0, "dev_phase_time": 150.0}
+    # the logged 60% cut at 306F is the control's 303F cut
+    res = execution_for_profile(prof, _timeline(), metrics)
+    assert res["variant"] == {"batch": 1, "label": "control"} and res["missed"] == 0
+    assert res["summary"].startswith("ran batch 1 (control); ")
+    # a 60% cut at 331F is batch 2's
+    tl = _timeline()
+    tl["moves"][-1].update(rel_time=470.0, bt=331.0)
+    assert execution_for_profile(prof, tl, metrics)["variant"]["batch"] == 2
+    # an extra 50% cut is batch 3's
+    tl = _timeline()
+    tl["moves"].append({"rel_time": 560.0, "bt": 341.0, "control": "Heater", "percentage": 50, "marker": ""})
+    res = execution_for_profile(prof, tl, metrics)
+    assert res["variant"]["batch"] == 3 and res["missed"] == 0 and not res["extra"]
+    # a profile without variants is compared with its own schedule
+    plain = dict(prof, contrast_lever={"key": "dev_seconds", "values": [120, 150]})
+    assert "variant" not in execution_for_profile(plain, _timeline(), metrics)
