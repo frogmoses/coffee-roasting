@@ -50,11 +50,13 @@ from roast_schedule import (
     trigger_kind, expected_seconds, fmt_mmss, DEFAULT_WARMUP, DEFAULT_GUARDS,
 )
 
-# The drum keeps cooling for a minute or more after the heater comes back (BT
-# fell from 300F to 250-284F on #21-24 and #27). The charge pop-up arms only
-# once BT is this far under the charge temperature, so one noisy reading just
-# after the heater returns cannot say "charge" while the drum is still falling.
-CHARGE_TURN_MARGIN_F = 5
+# No row opens a pop-up. The operator asked for them gone (2026-11-26): a
+# pop-up is a dialog that must be clicked away before CHARGE or FCs can be
+# pressed, which is exactly when the hands are needed. The "CHARGE NOW"
+# pop-up (with the marker that armed it), the 356F "FC imminent" pop-up and
+# the 372F "no FCs mark yet?" nag were removed; the sheet says when to
+# charge, and the Hottop panel still beeps at 356F. ACT_POPUP stays only so
+# an old alarm file can be described.
 
 # From-event codes (alarmtime), see artisan_conf.ALARM_FROM
 FROM_ON, FROM_CHARGE, FROM_FCS, FROM_DROP = 9, 0, 2, 6
@@ -79,11 +81,6 @@ DESCENT_MARGIN_F = 10
 # ... and also fires by clock this long after CHARGE (BT is near 185F on
 # the median curve by then), so a late CHARGE mark still arms the staircase.
 DESCENT_FALLBACK_S = 45
-# A pop-up when BT passes this with the roast still running: on this machine
-# every first crack has been marked by 366F, so a roast at this BT with no
-# FCs mark has missed it (the ear missed, or the operator did). The row
-# cannot know whether FCs is marked; it nags every roast, once.
-FC_NAG_BT = 372
 # COOL END this long after DROP (0 disables the row). The DROP button opens
 # the door and runs the cooling tray; COOL END turns everything off.
 DEFAULT_COOL_S = 240
@@ -114,9 +111,9 @@ def warmup_rows(charge, roast_marker, motor_button=MOTOR_BUTTON):
     """The From-ON warm-up: control on (drum starts), motor on with the door
     closed and the stirrer off, heater 100 and fan 0 to the preheat BT,
     heater off and fan up to cool, the fan back to 0 and the heater to 100 at
-    the charge BT, then a "charge now" pop-up when BT has bottomed out and
-    climbed back through the charge BT. Every measured roast (#21-24, #27)
-    was charged on that rising side; the falling side is a colder drum.
+    the charge BT. The operator charges when BT has bottomed out and climbed
+    back through the charge BT (every measured roast, #21-24 and #27, was
+    charged on that rising side); no row prompts for it.
 
     `roast_marker` is the 0-based index of the "roast started" row; every
     warm-up row is But-Not guarded by it. Returns the rows; the caller
@@ -144,19 +141,11 @@ def warmup_rows(charge, roast_marker, motor_button=MOTOR_BUTTON):
              action=ACT_FAN, string="0", negguard=roast_marker, label="warm-up: fan 0%"),
         _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_LT, temperature=charge_bt,
              action=ACT_HEATER, string="100", negguard=roast_marker, label="warm-up: heater 100%"),
-        _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_LT,
-             temperature=charge_bt - CHARGE_TURN_MARGIN_F, negguard=roast_marker,
-             label=f"marker: cooled below the charge temperature (BT < {charge_bt - CHARGE_TURN_MARGIN_F}F)"),
-        _row(**{"from": FROM_ON}, source=SRC_BT, cond=COND_GT, temperature=charge_bt,
-             action=ACT_POPUP, string=f"CHARGE NOW: BT is back up to {charge_bt}F",
-             beep=1, negguard=roast_marker, label="warm-up: charge pop-up"),
     ]
     # Heater 100 / fan 0 at ON must not undo a heater-off / fan-up that fired
     # first (a hot drum at ON): But Not the "preheat reached" row. The two
-    # "cooled to charge" rows fire only after the preheat row (If Alarm it),
-    # the marker only after them, and the pop-up only after the marker.
-    return rows, {"heater_on": 2, "fan_on": 3, "preheat": 4, "cooled": (6, 7),
-                  "turn_marker": 8, "charge_popup": 9}
+    # "cooled to charge" rows fire only after the preheat row (If Alarm it).
+    return rows, {"heater_on": 2, "fan_on": 3, "preheat": 4, "cooled": (6, 7)}
 
 
 def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0,
@@ -195,8 +184,6 @@ def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0
         rows[base + idx["fan_on"]]["negguard"] = base + idx["preheat"]
         for i in idx["cooled"]:
             rows[base + i]["guard"] = base + idx["preheat"]
-        rows[base + idx["turn_marker"]]["guard"] = base + idx["cooled"][-1]
-        rows[base + idx["charge_popup"]]["guard"] = base + idx["turn_marker"]
 
     # -- descent marker for the BT-triggered staircase
     moves = schedule.get("moves", [])
@@ -238,15 +225,9 @@ def schedule_to_alarms(schedule, envelope=None, mode="paired", ear_latency_s=0.0
                  label=f"{name} at BT {mv['trigger']['bt']}F" + (
                      f" or CHARGE + {fmt_mmss(offset)}" if offset else "")))
 
-    # -- first crack helpers
-    add(_row(source=SRC_BT, cond=COND_GT, temperature=guards["fc_popup_bt"], action=ACT_POPUP,
-             string="FC imminent: listen, mark FCs at the first crack", beep=1,
-             label=f"pop-up at {guards['fc_popup_bt']}F (FC imminent)"))
+    # -- first crack marker (no pop-ups: see the note at the top)
     fc_guard = add(_row(source=SRC_BT, cond=COND_GT, temperature=guards["fc_min_bt"],
                         label=f"marker: first crack possible (BT > {guards['fc_min_bt']}F)"))
-    add(_row(source=SRC_BT, cond=COND_GT, temperature=FC_NAG_BT, action=ACT_POPUP, beep=1,
-             string="No FCs mark yet? Mark it NOW (the drop timer runs from it)",
-             label=f"pop-up at {FC_NAG_BT}F (no FCs mark yet? mark it now)"))
 
     # -- post-FC moves and the drop
     for mv in schedule.get("post_fc", []):

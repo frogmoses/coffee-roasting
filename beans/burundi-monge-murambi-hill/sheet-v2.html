@@ -201,7 +201,7 @@
 <li>Name the roast in Artisan (<strong>Burundi Monge Murambi Hill</strong>) before you press ON, so the batch groups with its bean.</li>
 <li>Config &rarr; Alarms &rarr; Load batch 1's set, <code>profile-v2-bt-batch1.alrm</code>. <strong>Every batch today has its own alarm set</strong> (named on its card below); check each against its table at the end of this sheet.</li>
 <li>ON. The first alarm row takes Hottop control (super-user comes with it) and starts the drum; the next closes the door, stops the stirrer, and sets heater 100% and fan 0%. <strong>Do not press CONTROL yourself, today or ever</strong>: releasing control turns the Hottop off.</li>
-<li>The alarms run the warm-up: heater 100% until BT reaches <strong>370F</strong>, then heater 0% and fan 100% until BT falls to <strong>300F</strong>, then fan 0% and heater 100%. BT keeps falling for a minute or more, then climbs back. <strong>Charge at the pop-up</strong>, when BT climbs back through 300F, about 2 to 3 minutes after the heater came back on. If no pop-up appears, charge when BT climbs back through 300F. Write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>
+<li>The alarms run the warm-up: heater 100% until BT reaches <strong>370F</strong>, then heater 0% and fan 100% until BT falls to <strong>300F</strong>, then fan 0% and heater 100%. BT keeps falling for a minute or more, then climbs back. <strong>Charge when BT climbs back through 300F</strong>, about 2 to 3 minutes after the heater came back on (no alarm prompts for it; watch the BT reading). Write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>
 <li>Press START right before you charge, then CHARGE. From here the alarms make every move through first crack. If the timer is not running you have not pressed START and no alarm is watching: DROP and start over.</li>
 <li><strong>DROP is the panic button.</strong> Never OFF during a roast: with recording off no alarm evaluates, the 398F drop included, and the heater stays where it was.</li>
 <li>Between batches, in this order: DROP; <strong>COOL END</strong> (always, before OFF: it closes the door and stops the drum, fan, and stirrer; after OFF nothing will); OFF; <strong>save the log</strong> (the ear waits for that save before it can start the next batch's session); <strong>load the next batch's alarm set</strong> (Config &rarr; Alarms &rarr; Load, the file on its card); then ON. The warm-up repeats on its own.</li>
@@ -232,7 +232,7 @@
 <section>
 <div class="section-head"><div class="eyebrow">First crack</div><h2>Mark it, then the timer runs</h2></div>
 <ol class="steps">
-<li><strong>You mark FCs</strong>, at the first distinct crack or at 363F BT, whichever comes first. The ear's bell is confirmation, about 18 s behind the first cracks; if it rings before you have marked, mark now. The 372F pop-up means you have missed it: mark at once.</li>
+<li><strong>You mark FCs</strong>, at the first distinct crack or at 363F BT, whichever comes first. The ear's bell is confirmation, about 18 s behind the first cracks; if it rings before you have marked, mark now. If BT passes 370F with no mark, you have missed it: mark at once.</li>
 <li>Batch 1: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:45</strong> (that is 165 seconds, read the stopwatch as minutes:seconds).</li>
 <li>Batch 2: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:45</strong> (that is 165 seconds, read the stopwatch as minutes:seconds).</li>
 <li>Batch 3: start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at 2:45</strong> (that is 165 seconds, read the stopwatch as minutes:seconds).</li>
@@ -281,20 +281,16 @@ run_roast-analyzer analyze.py export-alarms &quot;Burundi Monge Murambi Hill&quo
  7. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
  8. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
  9. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
-10. ON BT &lt; 295F               -&gt; (no action: marks &#x27;cooled below the charge temperature&#x27;)  [if #9, unless #1]
-11. ON BT &gt; 300F               -&gt; Pop Up &#x27;CHARGE NOW: BT is back up to 300F&#x27; *  [if #10, unless #1]
-12. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
-13. CHARGE +0:15               -&gt; Fan 10%
-14. CHARGE +1:30               -&gt; Fan 20%
-15. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #12]
-16. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #12]
-17. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #12]
-18. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #12]
-19. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
-20. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
-21. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
-22. CHARGE BT &gt; 398F           -&gt; DROP *
-23. DROP +4:00                 -&gt; COOL END</pre>
+10. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
+11. CHARGE +0:15               -&gt; Fan 10%
+12. CHARGE +1:30               -&gt; Fan 20%
+13. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #10]
+14. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #10]
+15. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #10]
+16. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #10]
+17. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
+18. CHARGE BT &gt; 398F           -&gt; DROP *
+19. DROP +4:00                 -&gt; COOL END</pre>
 <h3>Batch 2: profile-v2-bt-batch2.alrm</h3>
 <pre> 1. CHARGE BT &gt; 0F             -&gt; (no action: marks &#x27;roast started&#x27;)
  2. ON +0:01                   -&gt; Event Button 3 (Control On)  [unless #1]
@@ -305,20 +301,16 @@ run_roast-analyzer analyze.py export-alarms &quot;Burundi Monge Murambi Hill&quo
  7. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
  8. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
  9. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
-10. ON BT &lt; 295F               -&gt; (no action: marks &#x27;cooled below the charge temperature&#x27;)  [if #9, unless #1]
-11. ON BT &gt; 300F               -&gt; Pop Up &#x27;CHARGE NOW: BT is back up to 300F&#x27; *  [if #10, unless #1]
-12. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
-13. CHARGE +0:15               -&gt; Fan 10%
-14. CHARGE +1:30               -&gt; Fan 20%
-15. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #12]
-16. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #12]
-17. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #12]
-18. CHARGE BT &gt; 340F           -&gt; Heater 60%  [if #12]
-19. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
-20. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
-21. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
-22. CHARGE BT &gt; 398F           -&gt; DROP *
-23. DROP +4:00                 -&gt; COOL END</pre>
+10. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
+11. CHARGE +0:15               -&gt; Fan 10%
+12. CHARGE +1:30               -&gt; Fan 20%
+13. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #10]
+14. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #10]
+15. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #10]
+16. CHARGE BT &gt; 340F           -&gt; Heater 60%  [if #10]
+17. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
+18. CHARGE BT &gt; 398F           -&gt; DROP *
+19. DROP +4:00                 -&gt; COOL END</pre>
 <h3>Batch 3: profile-v2-bt-batch3.alrm</h3>
 <pre> 1. CHARGE BT &gt; 0F             -&gt; (no action: marks &#x27;roast started&#x27;)
  2. ON +0:01                   -&gt; Event Button 3 (Control On)  [unless #1]
@@ -329,24 +321,20 @@ run_roast-analyzer analyze.py export-alarms &quot;Burundi Monge Murambi Hill&quo
  7. ON BT &gt; 370F               -&gt; Fan 100%  [unless #1]
  8. ON BT &lt; 300F               -&gt; Fan 0%  [if #6, unless #1]
  9. ON BT &lt; 300F               -&gt; Heater 100%  [if #6, unless #1]
-10. ON BT &lt; 295F               -&gt; (no action: marks &#x27;cooled below the charge temperature&#x27;)  [if #9, unless #1]
-11. ON BT &gt; 300F               -&gt; Pop Up &#x27;CHARGE NOW: BT is back up to 300F&#x27; *  [if #10, unless #1]
-12. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
-13. CHARGE +0:15               -&gt; Fan 10%
-14. CHARGE +1:30               -&gt; Fan 20%
-15. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #12]
-16. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #12]
-17. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #12]
-18. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #12]
-19. CHARGE BT &gt; 345F           -&gt; Heater 50%  [if #12]
-20. CHARGE BT &gt; 356F           -&gt; Pop Up &#x27;FC imminent: listen, mark FCs at the first crack&#x27; *
-21. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
-22. CHARGE BT &gt; 372F           -&gt; Pop Up &#x27;No FCs mark yet? Mark it NOW (the drop timer runs from it)&#x27; *
-23. CHARGE BT &gt; 398F           -&gt; DROP *
-24. DROP +4:00                 -&gt; COOL END</pre>
+10. CHARGE BT &lt; 252F or +0:45  -&gt; (no action: marks &#x27;past the turning point&#x27;)
+11. CHARGE +0:15               -&gt; Fan 10%
+12. CHARGE +1:30               -&gt; Fan 20%
+13. CHARGE BT &gt; 262F           -&gt; Heater 90%  [if #10]
+14. CHARGE BT &gt; 281F           -&gt; Heater 80%  [if #10]
+15. CHARGE BT &gt; 303F           -&gt; Heater 70%  [if #10]
+16. CHARGE BT &gt; 321F           -&gt; Heater 60%  [if #10]
+17. CHARGE BT &gt; 345F           -&gt; Heater 50%  [if #10]
+18. CHARGE BT &gt; 350F           -&gt; (no action: marks &#x27;first crack possible&#x27;)
+19. CHARGE BT &gt; 398F           -&gt; DROP *
+20. DROP +4:00                 -&gt; COOL END</pre>
 <p class="a" style="color: var(--ink-2)">* beeps. [if #N] fires only after row N; [unless #N] only if row N has not fired. A row with both a BT and a time fires on whichever comes first.</p>
 </section>
-<footer><span>Generated 2026-11-23 15:01 from profile v2</span>
+<footer><span>Generated 2026-11-26 09:42 from profile v2</span>
 <span>Note: Heater 90% at 262F, Heater 80% at 281F, Heater 70% at 303F, Heater 60% at 321F: a single 10% heater step barely shows in the rate of rise for about 2 minutes</span>
 <span>Note: Heater 80% at 281F: comes 50 s after the previous heater cut; closer than 60 s apart, two cuts act like one gradual cut</span>
 </footer></div>

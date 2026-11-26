@@ -389,7 +389,7 @@ reference emerges from the loop (`profile --set-reference`).
 
 **Schedule** (`roast_schedule.py`): `{charge{bt,heater,fan,warmup}, moves[{id,
 trigger, expect, action, value, why}], post_fc[], drop{after:"FCs", seconds},
-guards{bt_ceiling 398, fc_min_bt 350, fc_popup_bt 356}, predicted{fc_time_s,
+guards{bt_ceiling 398, fc_min_bt 350}, predicted{fc_time_s,
 fc_bt, drop_bt, confidence}}`. A trigger is `{"bt": F}` or `{"after":
 CHARGE|DRY|FCs, "seconds": N}`; `expect` is the twin in the other unit,
 filled from the envelope's median curve (`fill_expectations`,
@@ -477,19 +477,23 @@ marker (From CHARGE, BT > 0) that But-Not guards every From-ON warm-up row
 (control on = Event Button "3", motor on / door close / stirrer off =
 Event Button "1,5,8", heater 100 and fan 0 at ON+5 s unless the preheat row
 fired, BT > 370 -> heater 0 + fan 100, BT < 300 If-Alarm that -> fan 0 +
-heater 100, a marker at BT < 295 If-Alarm those (`CHARGE_TURN_MARGIN_F`, so
-one noisy reading cannot fire the pop-up), and BT > 300 If-Alarm the marker
--> "CHARGE NOW" pop-up: charge on the rising side, as #21-24 and #27 were,
-not as BT first falls past 300, while the drum is still cooling and BT
-falls another 16-50F); a "past the turning point" marker (BT < lowest trigger
+heater 100; the operator charges by eye on the rising side, as #21-24 and
+#27 were, not as BT first falls past 300, while the drum is still cooling
+and BT falls another 16-50F); a "past the turning point" marker (BT < lowest trigger
 - 10) that If-Alarm guards the BT rows (BT falls from 300F first); clock
-rows for the fan moves; the 356F pop-up; an "FC possible" marker (BT > 350)
+rows for the fan moves; an "FC possible" marker (BT > 350)
 guarding the post-FC rows and the DROP row (From FC START + dev - ear
-latency; omitted with `manual_drop`); a 372F "no FCs mark yet?" pop-up;
-BT > 398 -> DROP unconditional; COOL END at DROP + 240 s. The From-ON
+latency; omitted with `manual_drop`);
+BT > 398 -> DROP unconditional; COOL END at DROP + 240 s. **No row opens a
+pop-up** (removed 2026-11-26 at the operator's request: a pop-up is a
+dialog to click away right when CHARGE or FCs must be pressed). The
+"CHARGE NOW" pop-up and the marker that armed it, the 356F "FC imminent"
+pop-up, and the 372F "no FCs mark yet?" nag are gone; a test asserts no
+`ACT_POPUP` row is exported, and the `fc_popup_bt` guard was dropped from
+`DEFAULT_GUARDS` (old profiles still carry it; it is ignored). The From-ON
 rows are: button 3 "Control On" at ON+1 s, buttons "1,5,8" (motor on,
 door close, stirrer off) at ON+3 s, heater 100 and fan 0 at ON+5 s (both
-But-Not the preheat row), then the preheat, cool, and charge rows above. The descent
+But-Not the preheat row), then the preheat and cool rows above. The descent
 marker is `BT < lowest trigger - 10 or CHARGE + 45 s`. `.alrm` = 11 plural keys (`write_alrm`/`read_alrm`);
 `rows_to_conf` writes the singular `[Alarms]` keys (>= 2 rows).
 `describe_rows` prints them 1-based like the dialog.
@@ -525,8 +529,7 @@ DROP / COOL END (always: it closes the door and stops the drum) / OFF /
 save / ON (no Keep ON: autosave is off and a manual ON fires the From-ON
 rows). DROP is the panic button, never OFF (recording off = no alarm
 evaluates, heater stays). The descent marker has a clock twin at
-CHARGE+45 s so a late CHARGE mark still arms the staircase; a 372F pop-up
-nags when FCs is unmarked; a contrast session exports `bt` mode by default
+CHARGE+45 s so a late CHARGE mark still arms the staircase; a contrast session exports `bt` mode by default
 so the bracket's batches share the same cuts. The review that produced
 these is `docs/review-2026-09-18.md`. Build order A-G and gates are in the
 plan file; step B is a dev-machine Artisan Simulator run with

@@ -410,8 +410,8 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
         a(f"<li>The alarms run the warm-up: heater 100% until BT reaches <strong>{_e(warm.get('preheat_bt', 370))}F</strong>, "
           f"then heater {_e(warm.get('cool_heater', 0))}% and fan {_e(warm.get('cool_fan', 100))}% until BT falls to "
           f"<strong>{_e(warm.get('charge_bt', 300))}F</strong>, then fan 0% and heater 100%. BT keeps falling for a minute or more, then climbs back. "
-          f"<strong>Charge at the pop-up</strong>, when BT climbs back through {_e(warm.get('charge_bt', 300))}F, about 2 to 3 minutes after the heater came back on. "
-          f"If no pop-up appears, charge when BT climbs back through {_e(warm.get('charge_bt', 300))}F. "
+          f"<strong>Charge when BT climbs back through {_e(warm.get('charge_bt', 300))}F</strong>, about 2 to 3 minutes after the heater came back on "
+          "(no alarm prompts for it; watch the BT reading). "
           "Write the ET reading on the batch's intake line (it is a record, not a thing to wait for).</li>")
     else:
         a("<li>ON, then right-click the timer LCD until the message bar says <strong>super on</strong>, then CONTROL once (<strong>Hottop control turned on</strong>). "
@@ -488,7 +488,7 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
     a('<ol class="steps">')
     if manual_drop:
         a("<li><strong>You mark FCs</strong>, at the first distinct crack or at 363F BT, whichever comes first. The ear's bell is confirmation, "
-          "about 18 s behind the first cracks; if it rings before you have marked, mark now. The 372F pop-up means you have missed it: mark at once.</li>")
+          "about 18 s behind the first cracks; if it rings before you have marked, mark now. If BT passes 370F with no mark, you have missed it: mark at once.</li>")
         for c in batches:
             move = f" <strong>{_e(c['manual_move'])}</strong>, then" if c.get("manual_move") else ""
             a(f"<li>Batch {c['order']}:{move} start a stopwatch at <em>your</em> FCs mark and press <strong>DROP at {_e(fmt_mmss(c['dev_s']))}</strong> "
@@ -499,7 +499,7 @@ def render_sheet(profile, dossier, envelope, alarm_rows=None, batches=None, alar
           f"{latency:.0f} s latency, so a hand mark would shorten development by that much. The ear must be running with <code>--push-artisan</code>.</li>")
         a(f"<li>The DROP alarm fires <strong>{_e(fmt_mmss(dev))}</strong> of development after first crack. "
           "For the shorter and longer batches load the matching set or drop by hand at the card's time.</li>")
-        a("<li>If the 372F pop-up fires with no FCs mark, the ear missed it: mark FCs yourself and press DROP at the card's time minus "
+        a("<li>If BT passes 370F with no FCs mark, the ear missed it: mark FCs yourself and press DROP at the card's time minus "
           f"{latency:.0f} s on your stopwatch (the row will fire {latency:.0f} s early from your mark; beat it or accept it).</li>")
     for w in profile.get("watch_for") or []:
         # In a manual session the designer's lines about the ear's lag would

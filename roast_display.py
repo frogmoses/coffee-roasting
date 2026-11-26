@@ -697,7 +697,7 @@ def display_profile(profile, envelope=None):
     guards = sched.get("guards") or {}
     if guards:
         lines += _wrap_rows(
-            f"Guards: pop-up at {guards.get('fc_popup_bt')}F, DROP timer only once BT > "
+            f"Guards: DROP timer only once BT > "
             f"{guards.get('fc_min_bt')}F, DROP if BT > {guards.get('bt_ceiling')}F.", w, prefix=" ", indent="   ")
     hyp = profile.get("flavor_hypothesis")
     if hyp:

@@ -807,7 +807,7 @@
     "Every batch drops near 375F. Batch 2 may run a few degrees higher at the same 2:45."
   ],
   "exported": {
-    "at": "2026-11-23T14:59:07",
+    "at": "2026-11-26T09:42:02",
     "first_at": "2026-11-23T14:59:07",
     "mode": "bt",
     "ear_latency_s": 0.0,

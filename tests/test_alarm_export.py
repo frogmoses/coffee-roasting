@@ -66,26 +66,18 @@ def test_paired_rows_encode_bt_with_time_fallback_and_guards():
     assert motor["action"] == ae.ACT_BUTTON and motor["string"] == "1,5,8" and motor["negguard"] == i_roast
     i_pre, pre = _by_label(rows, "370F reached")
     assert pre["source"] == ae.SRC_BT and pre["temperature"] == 370 and pre["string"] == "0"
-    # heater back on at 300F falling; the charge pop-up waits until BT has
-    # fallen 5F further and climbed back through 300F
+    # heater back on at 300F falling; the operator charges on the climb back
+    # (no marker, no pop-up)
     i_back = next(i for i, r in enumerate(rows) if r["action"] == ae.ACT_HEATER and r["string"] == "100"
                   and r["cond"] == ae.COND_LT and r["temperature"] == 300)
-    assert rows[i_back]["guard"] == i_pre
-    i_turn, turn = _by_label(rows, "cooled below the charge temperature")
-    assert turn["cond"] == ae.COND_LT and turn["temperature"] == 295 and turn["guard"] == i_back
-    assert turn["action"] == ae.ACT_NONE and turn["negguard"] == i_roast
-    i_pop, pop = _by_label(rows, "charge pop-up")
-    assert pop["cond"] == ae.COND_GT and pop["temperature"] == 300 and pop["guard"] == i_turn
-    assert pop["action"] == ae.ACT_POPUP and pop["beep"] == 1 and pop["negguard"] == i_roast
-    assert i_pre < i_back < i_turn < i_pop
+    assert rows[i_back]["guard"] == i_pre and i_pre < i_back
     # heater 100% and fan 0% at ON+5s are But-Not guarded by the preheat row
     # (a hot drum at ON must not have its cooling undone)
     on_rows = [r for r in rows if r["from"] == ae.FROM_ON and r["offset"] == 5]
     assert {r["action"] for r in on_rows} == {ae.ACT_HEATER, ae.ACT_FAN}
     assert all(r["negguard"] == i_pre for r in on_rows)
-    # the missed-FC nag sits between the FC marker and the drop
-    _, nag = _by_label(rows, "no FCs mark yet")
-    assert nag["temperature"] == ae.FC_NAG_BT == 372 and nag["action"] == ae.ACT_POPUP and nag["beep"] == 1
+    # no row opens a pop-up: the operator clicks nothing before CHARGE or FCs
+    assert not [r for r in rows if r["action"] == ae.ACT_POPUP]
     # staircase
     _, fan10 = _by_label(rows, "fan 10% at CHARGE + 0:15")
     assert fan10["from"] == ae.FROM_CHARGE and fan10["offset"] == 15 and fan10["source"] == ae.SRC_NONE
@@ -94,8 +86,6 @@ def test_paired_rows_encode_bt_with_time_fallback_and_guards():
     assert h80["source"] == ae.SRC_BT and h80["temperature"] == 262 and 350 < h80["offset"] < 380
     assert h80["guard"] == i_desc and h80["action"] == ae.ACT_HEATER and h80["string"] == "80"
     # FC helpers, post-FC, drop, ceiling, cool
-    _, popup = _by_label(rows, "FC imminent")
-    assert popup["temperature"] == 356 and popup["action"] == ae.ACT_POPUP and popup["beep"] == 1
     i_fc, fc = _by_label(rows, "first crack possible")
     assert fc["temperature"] == 350 and fc["action"] == ae.ACT_NONE
     _, fan40 = _by_label(rows, "fan 40% at FCs")

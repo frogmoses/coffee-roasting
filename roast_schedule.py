@@ -21,7 +21,7 @@ Shape (see the plan file for the reasoning):
      "post_fc": [{"trigger": {"after": "FCs", "seconds": 0},
                   "action": "fan", "value": 40, "why": "..."}],
      "drop": {"after": "FCs", "seconds": 150},
-     "guards": {"bt_ceiling": 398, "fc_min_bt": 350, "fc_popup_bt": 356},
+     "guards": {"bt_ceiling": 398, "fc_min_bt": 350},
      "predicted": {"fc_time_s": 640, "fc_bt": 361, "drop_bt": 385,
                    "confidence": "measured"}}
 
@@ -79,9 +79,9 @@ MAX_PRE_FC_MOVES = 8
 # Projected drop must stay under this (408F eject minus the planner margin).
 BT_CEILING_DEFAULT = SAFETY_EJECT_BT - EJECT_MARGIN_F
 # First crack is impossible under this BT; the DROP timer must not start
-# on a false crack below it. The Hottop panel flags FC imminent at 356F.
+# on a false crack below it. (The Hottop panel beeps FC imminent at 356F;
+# the exported alarms add no pop-up of their own.)
 FC_MIN_BT = 350
-FC_POPUP_BT = 356
 # Revision bounds: how far one version may move from its baseline.
 REVISION_MAX_CHANGES = 3
 REVISION_BOUNDS = {"bt": 20, "seconds": 30, "value": 20, "dev": 30}
@@ -89,8 +89,7 @@ REVISION_BOUNDS = {"bt": 20, "seconds": 30, "value": 20, "dev": 30}
 FC_PREDICTION_SLACK_S = 90
 
 DEFAULT_WARMUP = {"preheat_bt": 370, "cool_heater": 0, "cool_fan": 100, "charge_bt": 300}
-DEFAULT_GUARDS = {"bt_ceiling": BT_CEILING_DEFAULT, "fc_min_bt": FC_MIN_BT,
-                  "fc_popup_bt": FC_POPUP_BT}
+DEFAULT_GUARDS = {"bt_ceiling": BT_CEILING_DEFAULT, "fc_min_bt": FC_MIN_BT}
 
 
 def fmt_mmss(seconds):

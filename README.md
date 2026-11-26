@@ -145,9 +145,10 @@ control (super-user included) and starts the drum, so never press CONTROL
 yourself: releasing control turns the Hottop off (the old restart dance was
 that button). The From-ON rows run the warm-up (door closed, stirrer off,
 heater 100% to 370F, heater off and fan up to 300F, heater back on; BT falls
-further, then a pop-up says charge as it climbs back through 300F);
-you press START and CHARGE; the alarms make every move through first
-crack; a 372F pop-up nags if FCs is still unmarked; a 398F row drops the
+further, and you charge as it climbs back through 300F). No alarm opens a
+pop-up, so nothing needs clicking away before CHARGE or FCs.
+You press START and CHARGE; the alarms make every move through first
+crack; a 398F row drops the
 beans if anything goes wrong. DROP is the panic button, never OFF: with
 recording off no alarm evaluates and the heater stays where it was. Between
 batches, in order: DROP, COOL END (always, it closes the door and stops the
@@ -182,8 +183,8 @@ sessions, start it with `--push-artisan` and re-export without
 `--manual-drop` so Artisan drops on its own. Then keep your hands off the
 FCs button: the DROP row is timed from the ear's mark minus its latency, and
 a hand mark would shorten development by that much. One marker per session,
-never both. Either way, the 372F pop-up means first crack has been missed:
-mark it yourself, because without a mark the timed DROP row never fires and
+never both. Either way, BT past 370F with no FCs mark means first crack
+has been missed: mark it yourself, because without a mark the timed DROP row never fires and
 the next automatic drop is the 398F ceiling.
 
 A contrast session exports BT-only rows on its own (`--mode bt`), so all
