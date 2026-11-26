@@ -21,8 +21,12 @@ SAFETY_EJECT_BT = 408
 # (13 roasts, three beans) fell between 358F and 366F, and outside the band
 # the late-development RoR nosedive (~380F) looks identical to the crack.
 FC_DETECT_BT_BAND = (350, 372)
-# The crash is measured as the RoR change over this many seconds.
-FC_DETECT_DROP_SPAN = 20
+# The crash is measured as the RoR change over this many seconds. 30, not
+# 20: a heater cut's delayed dip is short and steep, the crack's fall is
+# long and deep. At 20 s #28 (2026-11-14) picked the 60% cut's dip at 351F,
+# 54 s before a correct mark; at 30 s it finds the crack (-4 s), and it sits
+# closer to the ear's verdict on all six roasts the ear heard.
+FC_DETECT_DROP_SPAN = 30
 # A mark this far (seconds) from the curve's crash is flagged as suspect.
 FC_MARK_TOLERANCE = 30
 
@@ -416,9 +420,12 @@ def detect_fc_from_curve(data, band=FC_DETECT_BT_BAND):
 
     Honest limits: the band is itself a fixed-temperature prior, the drop is
     small against a curve that is already falling, and heater cuts made
-    60-90s earlier produce dips of similar size. Validated on this roaster's
-    own logs: median offset +4s, 85% of marks within 30s. Treat it as a
-    consistency check on the mark, not ground truth.
+    60-140s earlier produce short dips of similar steepness (the 30 s drop
+    span favours the crack's longer fall over them). Validated on this
+    roaster's own logs (23 roasts, Nov 2026): median offset +2s, 20 of 23
+    marks within 30s (one of the three, #21, was a genuinely early mark the
+    ear confirmed), and within 25s of the ear's verdict on all six roasts it
+    heard. Treat it as a consistency check on the mark, not ground truth.
 
     Args:
         data: Extracted roast data from roast_parser.extract_roast_data().

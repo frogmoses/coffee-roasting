@@ -237,3 +237,44 @@ def test_detect_fc_returns_none_when_curve_never_reaches_band():
     data = _fc_curve()
     data["bt"] = [v - 100 for v in data["bt"]]  # tops out ~280F
     assert detect_fc_from_curve(data) is None
+
+
+
+# Batch #28 (Burundi, 2026-11-14) as logged, 2s sampling, 560s -> DROP at
+# 862s. The 60% heater cut at 8:22 left a short, steep RoR dip at ~351F
+# (~640s); the crack, marked at 694s (357.8F), is the longer, deeper fall
+# where BT sits flat for half a minute.
+_BT_28_FROM_560S = [
+    333.2, 333.8, 334.4, 334.4, 335.0, 335.6, 336.2, 336.2, 336.8, 337.4, 338.0, 338.0,
+    338.0, 338.6, 339.2, 339.8, 341.6, 341.6, 341.6, 341.6, 342.2, 342.8, 343.4, 343.4,
+    343.4, 343.4, 344.0, 344.6, 345.2, 345.8, 346.4, 347.0, 347.0, 347.6, 348.2, 348.8,
+    348.8, 348.8, 349.4, 350.0, 350.6, 350.6, 350.6, 350.6, 350.6, 351.2, 351.8, 352.4,
+    352.4, 352.4, 352.4, 353.0, 353.6, 354.2, 354.2, 354.2, 354.2, 354.8, 355.4, 356.0,
+    356.0, 356.0, 356.6, 357.2, 357.8, 357.8, 357.8, 357.8, 357.8, 357.8, 357.8, 357.8,
+    357.8, 358.4, 359.0, 359.6, 359.6, 359.6, 359.6, 359.6, 359.6, 359.6, 359.6, 359.6,
+    359.6, 359.6, 359.6, 359.6, 359.6, 359.6, 359.6, 359.6, 360.2, 360.8, 361.4, 361.4,
+    361.4, 361.4, 361.4, 361.4, 361.4, 361.4, 361.4, 361.4, 362.0, 362.6, 363.2, 363.2,
+    363.2, 363.2, 363.2, 363.2, 363.2, 363.2, 363.8, 364.4, 365.0, 365.0, 365.0, 365.0,
+    365.0, 365.0, 365.6, 366.2, 366.8, 366.8, 366.8, 366.8, 366.8, 366.8, 367.4, 368.0,
+    368.6, 368.6, 368.6, 368.6, 368.6, 369.2, 369.8, 370.4, 371.3, 372.2, 372.8, 373.4,
+    374.0, 374.0, 374.6, 375.2, 375.8, 375.8, 375.8, 375.8,
+]
+
+
+def _roast_28_curve():
+    """#28's logged BT from 560s, preceded by a straight 12.3 F/min climb
+    from CHARGE (only the band 350-372F matters to the detector)."""
+    prefix = [round(333.2 - 12.3 * (560 - t) / 60, 1) for t in range(0, 560, 2)]
+    bt = prefix + _BT_28_FROM_560S
+    timex = [float(i * 2) for i in range(len(bt))]
+    return {"timex": timex, "bt": bt,
+            "timeindex": [0, 150, 694 // 2, 0, 0, 0, len(bt) - 1, 0]}
+
+
+def test_detect_fc_prefers_the_crack_over_an_earlier_heater_dip():
+    # At a 20s drop span the 351F heater dip won and flagged #28's correct
+    # mark as 54s late; the crack's longer, deeper fall must win.
+    check = detect_fc_from_curve(_roast_28_curve())
+    assert check["detected_bt"] >= 355
+    assert abs(check["offset"]) <= 15
+    assert not check["mark_suspect"]
